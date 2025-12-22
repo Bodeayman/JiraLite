@@ -1,18 +1,12 @@
-
+// Empty component
+import React from 'react'
 
 const Toolbar = () => {
     return (
-        <div className="toolbar-container">
-            <input
-                type="text"
-                placeholder="List name"
-                className="input-text"
-            />
-            <button className="btn-primary">
-                Create List
-            </button>
-        </div>
-    );
-};
+        <div>
 
-export default Toolbar;
+        </div>
+    )
+}
+
+export default Toolbar
