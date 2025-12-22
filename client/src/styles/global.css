@@ -4,11 +4,11 @@
 
 @layer components {
     .btn-primary {
-        @apply inline-block bg-blue-600 text-white rounded font-medium transition hover:bg-blue-700;
+        @apply inline-block bg-blue-600 text-white rounded font-medium transition hover:bg-blue-700 px-6 py-2.5;
     }
 
     .btn-secondary {
-        @apply inline-block bg-gray-200 text-gray-800 rounded font-medium transition hover:bg-gray-300;
+        @apply inline-block bg-gray-200 text-gray-800 rounded font-medium transition hover:bg-gray-300 px-6 py-2.5;
     }
 
     .input-text {

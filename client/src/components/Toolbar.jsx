@@ -1,12 +1,41 @@
-// Empty component
-import React from 'react'
+import { useState } from 'react';
+import { useBoard } from '../context/BoardProvider';
 
 const Toolbar = () => {
+    const [listName, setListName] = useState('');
+    const { dispatch } = useBoard();
+
+    const handleCreateList = () => {
+        if (!listName.trim()) return;
+
+        dispatch({ type: 'ADD_LIST', payload: listName });
+        setListName('');
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            handleCreateList();
+        }
+    };
+
     return (
-        <div>
-
+        <div className="toolbar-container">
+            <input
+                type="text"
+                placeholder="List name"
+                className="input-text"
+                value={listName}
+                onChange={(e) => setListName(e.target.value)}
+                onKeyDown={handleKeyDown}
+            />
+            <button
+                className="btn-primary"
+                onClick={handleCreateList}
+            >
+                Create List
+            </button>
         </div>
-    )
-}
+    );
+};
 
-export default Toolbar
+export default Toolbar;
