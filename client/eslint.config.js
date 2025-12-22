@@ -9,10 +9,19 @@ import prettier from 'eslint-config-prettier';
 export default [
   { ignores: ['dist'] },
   {
+    files: ['playwright.config.js', 'vite.config.js', 'postcss.config.js', 'tailwind.config.js', 'eslint.config.js'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
     files: ['**/*.{js,jsx}'],
     languageOptions: {
       ecmaVersion: 2020,
-      globals: globals.browser,
+      globals: {
+        ...globals.browser,
+        ...globals.jest,
+      },
       parserOptions: {
         ecmaVersion: 'latest',
         ecmaFeatures: { jsx: true },
