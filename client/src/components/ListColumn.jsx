@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo, useCallback, useMemo } from 'react';
 import Card from './Card';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
-const ListColumn = ({ id, title, cards = [], onAddCard, onEditName, onArchiveList, onCardClick }) => {
+const ListColumn = memo(({ id, title, cards = [], onAddCard, onEditName, onArchiveList, onCardClick }) => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef(null);
     const buttonRef = useRef(null);
@@ -48,18 +48,18 @@ const ListColumn = ({ id, title, cards = [], onAddCard, onEditName, onArchiveLis
         }
     }, [isMenuOpen]);
 
-    const handleMenuToggle = (e) => {
+    const handleMenuToggle = useCallback((e) => {
         e.stopPropagation();
-        setIsMenuOpen(!isMenuOpen);
-    };
+        setIsMenuOpen(prev => !prev);
+    }, []);
 
-    const handleMenuAction = (action) => {
+    const handleMenuAction = useCallback((action) => {
         return (e) => {
             e.stopPropagation();
             setIsMenuOpen(false);
             action();
         };
-    };
+    }, []);
 
     return (
         <div
@@ -125,22 +125,22 @@ const ListColumn = ({ id, title, cards = [], onAddCard, onEditName, onArchiveLis
             </div>
 
             <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-0">
-                <SortableContext items={cards.map(c => c.id)} strategy={verticalListSortingStrategy}>
+                <SortableContext items={useMemo(() => cards.map(c => c.id), [cards])} strategy={verticalListSortingStrategy}>
                     {cards.map((card) => (
                         <Card
                             key={card.id}
                             id={card.id}
                             title={card.title}
                             tags={card.tags}
-                            onClick={(e) => {
-                                onCardClick(card);
-                            }}
+                            onClick={() => onCardClick(card)}
                         />
                     ))}
                 </SortableContext>
             </div>
         </div>
     );
-};
+});
+
+ListColumn.displayName = 'ListColumn';
 
 export default ListColumn;

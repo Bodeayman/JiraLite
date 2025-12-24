@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo, useCallback } from 'react';
 
-const CardDetailModal = ({ card, onClose, onDelete, onUpdate }) => {
+const CardDetailModal = memo(({ card, onClose, onDelete, onUpdate }) => {
     const [title, setTitle] = useState(card.title);
     const [description, setDescription] = useState(card.description || '');
     const [newTag, setNewTag] = useState('');
@@ -13,28 +13,31 @@ const CardDetailModal = ({ card, onClose, onDelete, onUpdate }) => {
         setTags(card.tags || []);
     }, [card]);
 
-    const handleSave = () => {
+    const handleSave = useCallback(() => {
         onUpdate(card.id, {
             title,
             description,
             tags
         });
         onClose();
-    };
+    }, [card.id, title, description, tags, onUpdate, onClose]);
 
-    const handleAddTag = (e) => {
+    const handleAddTag = useCallback((e) => {
         if (e.key === 'Enter' && newTag.trim()) {
             e.preventDefault();
-            if (!tags.includes(newTag.trim())) {
-                setTags([...tags, newTag.trim()]);
-            }
+            setTags(prevTags => {
+                if (!prevTags.includes(newTag.trim())) {
+                    return [...prevTags, newTag.trim()];
+                }
+                return prevTags;
+            });
             setNewTag('');
         }
-    };
+    }, [newTag]);
 
-    const removeTag = (tagToRemove) => {
-        setTags(tags.filter(tag => tag !== tagToRemove));
-    };
+    const removeTag = useCallback((tagToRemove) => {
+        setTags(prevTags => prevTags.filter(tag => tag !== tagToRemove));
+    }, []);
 
     return (
         <div className="fixed inset-0 z-40 flex justify-center items-center p-4 bg-slate-900/20 backdrop-blur-sm animate-in fade-in duration-200" onPointerDown={e => e.stopPropagation()}>
@@ -136,6 +139,8 @@ const CardDetailModal = ({ card, onClose, onDelete, onUpdate }) => {
             </div>
         </div>
     );
-};
+});
+
+CardDetailModal.displayName = 'CardDetailModal';
 
 export default CardDetailModal;

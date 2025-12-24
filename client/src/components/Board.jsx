@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import Toolbar from './Toolbar';
 import ListColumn from './ListColumn';
 import CardDetailModal from './CardDetailModal';
@@ -57,16 +57,16 @@ const Board = () => {
         })
     );
 
-    const handleCardClick = (card) => {
+    const handleCardClick = useCallback((card) => {
         setSelectedCard(card);
-    };
+    }, []);
 
-    const handleCloseModal = () => {
+    const handleCloseModal = useCallback(() => {
         setSelectedCard(null);
-    };
+    }, []);
 
     // Helper to open confirm dialog
-    const confirmAction = (title, message, action) => {
+    const confirmAction = useCallback((title, message, action) => {
         setConfirmDialog({
             isOpen: true,
             title,
@@ -76,10 +76,10 @@ const Board = () => {
                 setConfirmDialog(prev => ({ ...prev, isOpen: false }));
             }
         });
-    };
+    }, []);
 
     // Helper to open input dialog
-    const openInputDialog = (title, message, placeholder, initialValue, onConfirm) => {
+    const openInputDialog = useCallback((title, message, placeholder, initialValue, onConfirm) => {
         setInputDialog({
             isOpen: true,
             title,
@@ -91,17 +91,17 @@ const Board = () => {
                 setInputDialog(prev => ({ ...prev, isOpen: false }));
             }
         });
-    };
+    }, []);
 
-    const findContainer = (id) => {
+    const findContainer = useCallback((id) => {
         if (state.columns.find(col => col.id === id)) {
             return id;
         }
         const container = state.columns.find(col => col.cards.find(card => card.id === id));
         return container ? container.id : null;
-    };
+    }, [state.columns]);
 
-    const handleDragStart = (event) => {
+    const handleDragStart = useCallback((event) => {
         const { active } = event;
         setActiveId(active.id);
 
@@ -111,15 +111,15 @@ const Board = () => {
         } else {
             setActiveItem(active.data.current.card);
         }
-    };
+    }, []);
 
-    const handleDragOver = (event) => {
+    const handleDragOver = useCallback((event) => {
         const { active, over } = event;
         const overId = over?.id;
         if (!overId || active.id === overId) return;
-    };
+    }, []);
 
-    const handleDragEnd = (event) => {
+    const handleDragEnd = useCallback((event) => {
         const { active, over } = event;
 
         if (!over) {
@@ -154,9 +154,9 @@ const Board = () => {
 
         setActiveId(null);
         setActiveItem(null);
-    };
+    }, [dispatch, findContainer]);
 
-    const dropAnimation = {
+    const dropAnimation = useMemo(() => ({
         sideEffects: defaultDropAnimationSideEffects({
             styles: {
                 active: {
@@ -164,7 +164,22 @@ const Board = () => {
                 },
             },
         }),
-    };
+    }), []);
+
+    const handleDeleteCard = useCallback((id) => {
+        confirmAction(
+            "Delete Card",
+            "Are you sure you want to delete this card? This action cannot be undone.",
+            () => {
+                dispatch({ type: 'DELETE_CARD', payload: id });
+                handleCloseModal();
+            }
+        );
+    }, [confirmAction, dispatch, handleCloseModal]);
+
+    const handleUpdateCard = useCallback((id, updates) => {
+        dispatch({ type: 'UPDATE_CARD', payload: { id, updates } });
+    }, [dispatch]);
 
     return (
         <DndContext
@@ -178,49 +193,57 @@ const Board = () => {
                 <Toolbar />
                 <div className="flex-1 overflow-x-auto overflow-y-hidden">
                     <div className="h-full flex gap-6 p-6 min-w-max items-start">
-                        <SortableContext items={state.columns.map(c => c.id)} strategy={horizontalListSortingStrategy}>
-                            {state.columns.map(column => (
-                                <ListColumn
-                                    key={column.id}
-                                    id={column.id}
-                                    title={column.title}
-                                    cards={column.cards}
-                                    onAddCard={() => {
-                                        openInputDialog(
-                                            "Add New Card",
-                                            "Enter a title for the new card",
-                                            "Card title",
-                                            "",
-                                            (title) => {
-                                                if (title) {
-                                                    dispatch({ type: 'ADD_CARD', payload: { columnId: column.id, title } });
-                                                }
+                        <SortableContext items={useMemo(() => state.columns.map(c => c.id), [state.columns])} strategy={horizontalListSortingStrategy}>
+                            {state.columns.map(column => {
+                                const handleAddCard = () => {
+                                    openInputDialog(
+                                        "Add New Card",
+                                        "Enter a title for the new card",
+                                        "Card title",
+                                        "",
+                                        (title) => {
+                                            if (title) {
+                                                dispatch({ type: 'ADD_CARD', payload: { columnId: column.id, title } });
                                             }
-                                        );
-                                    }}
-                                    onEditName={() => {
-                                        openInputDialog(
-                                            "Edit List Title",
-                                            "Enter a new title for this list",
-                                            "List title",
-                                            column.title,
-                                            (newTitle) => {
-                                                if (newTitle) {
-                                                    dispatch({ type: 'EDIT_LIST_TITLE', payload: { id: column.id, title: newTitle } });
-                                                }
+                                        }
+                                    );
+                                };
+
+                                const handleEditName = () => {
+                                    openInputDialog(
+                                        "Edit List Title",
+                                        "Enter a new title for this list",
+                                        "List title",
+                                        column.title,
+                                        (newTitle) => {
+                                            if (newTitle) {
+                                                dispatch({ type: 'EDIT_LIST_TITLE', payload: { id: column.id, title: newTitle } });
                                             }
-                                        );
-                                    }}
-                                    onArchiveList={() => {
-                                        confirmAction(
-                                            "Archive List",
-                                            `Are you sure you want to archive "${column.title}"? This action cannot be undone.`,
-                                            () => dispatch({ type: 'ARCHIVE_LIST', payload: column.id })
-                                        );
-                                    }}
-                                    onCardClick={handleCardClick}
-                                />
-                            ))}
+                                        }
+                                    );
+                                };
+
+                                const handleArchiveList = () => {
+                                    confirmAction(
+                                        "Archive List",
+                                        `Are you sure you want to archive "${column.title}"? This action cannot be undone.`,
+                                        () => dispatch({ type: 'ARCHIVE_LIST', payload: column.id })
+                                    );
+                                };
+
+                                return (
+                                    <ListColumn
+                                        key={column.id}
+                                        id={column.id}
+                                        title={column.title}
+                                        cards={column.cards}
+                                        onAddCard={handleAddCard}
+                                        onEditName={handleEditName}
+                                        onArchiveList={handleArchiveList}
+                                        onCardClick={handleCardClick}
+                                    />
+                                );
+                            })}
                         </SortableContext>
                     </div>
                 </div>
@@ -247,19 +270,8 @@ const Board = () => {
                     <CardDetailModal
                         card={selectedCard}
                         onClose={handleCloseModal}
-                        onDelete={(id) => {
-                            confirmAction(
-                                "Delete Card",
-                                "Are you sure you want to delete this card? This action cannot be undone.",
-                                () => {
-                                    dispatch({ type: 'DELETE_CARD', payload: id });
-                                    handleCloseModal();
-                                }
-                            );
-                        }}
-                        onUpdate={(id, updates) => {
-                            dispatch({ type: 'UPDATE_CARD', payload: { id, updates } });
-                        }}
+                        onDelete={handleDeleteCard}
+                        onUpdate={handleUpdateCard}
                     />
                 )}
 
@@ -268,7 +280,7 @@ const Board = () => {
                     title={confirmDialog.title}
                     message={confirmDialog.message}
                     onConfirm={confirmDialog.onConfirm}
-                    onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                    onCancel={useCallback(() => setConfirmDialog(prev => ({ ...prev, isOpen: false })), [])}
                     type="danger"
                 />
                 <InputDialog
@@ -278,7 +290,7 @@ const Board = () => {
                     placeholder={inputDialog.placeholder}
                     initialValue={inputDialog.initialValue}
                     onConfirm={inputDialog.onConfirm}
-                    onCancel={() => setInputDialog(prev => ({ ...prev, isOpen: false }))}
+                    onCancel={useCallback(() => setInputDialog(prev => ({ ...prev, isOpen: false })), [])}
                 />
             </main>
         </DndContext>
