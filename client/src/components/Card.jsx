@@ -24,20 +24,20 @@ const Card = ({ id, title, tags = [], onClick }) => {
             {...attributes}
             {...listeners}
             onClick={onClick}
-            className="bg-white p-3 rounded shadow-sm border border-gray-200 cursor-pointer hover:shadow-md transition mb-3 touch-none"
+            className="card-base mb-3"
         >
-            <h4 className="font-medium text-gray-800 mb-2">{title}</h4>
-            <div className="flex gap-1 flex-wrap overflow-hidden h-6">
+            <h4 className="font-medium text-slate-700 group-hover:text-violet-700 transition-colors mb-2">{title}</h4>
+            <div className="flex gap-1 flex-wrap overflow-hidden min-h-[20px]">
                 {tags.slice(0, 3).map((tag, index) => (
                     <span
                         key={index}
-                        className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800"
+                        className="text-[10px] uppercase font-bold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded border border-violet-100"
                     >
                         {tag}
                     </span>
                 ))}
                 {tags.length > 3 && (
-                    <span className="text-xs text-gray-500 self-center">...</span>
+                    <span className="text-xs text-slate-400 self-center">+{tags.length - 3}</span>
                 )}
             </div>
         </div>

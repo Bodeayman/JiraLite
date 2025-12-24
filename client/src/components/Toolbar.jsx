@@ -19,7 +19,7 @@ const Toolbar = () => {
     };
 
     return (
-        <div className="toolbar-container">
+        <div className="p-5 text-center w-full bg-white border-b border-slate-200">
             <input
                 type="text"
                 placeholder="List name"
@@ -29,7 +29,7 @@ const Toolbar = () => {
                 onKeyDown={handleKeyDown}
             />
             <button
-                className="btn-primary"
+                className="btn-primary mt-5"
                 onClick={handleCreateList}
             >
                 Create List
