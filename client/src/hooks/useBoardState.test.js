@@ -17,6 +17,10 @@ jest.mock('../services/storage', () => ({
     deleteList: jest.fn(() => Promise.resolve()),
     updateListsOrder: jest.fn(() => Promise.resolve()),
     updateCardsOrder: jest.fn(() => Promise.resolve()),
+    getQueue: jest.fn(() => Promise.resolve([])),
+    addToQueue: jest.fn(() => Promise.resolve()),
+    removeFromQueue: jest.fn(() => Promise.resolve()),
+    clearQueue: jest.fn(() => Promise.resolve()),
 }));
 
 /**
@@ -31,8 +35,10 @@ describe('useBoardState', () => {
         jest.clearAllMocks();
     });
 
-    test('should return columns and action functions', () => {
+    test('should return columns and action functions', async () => {
         const { result } = renderHook(() => useBoardState(), { wrapper });
+        // Wait for initial load
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 
         expect(result.current.columns).toBeDefined();
         expect(Array.isArray(result.current.columns)).toBe(true);
@@ -50,6 +56,13 @@ describe('useBoardState', () => {
 
     test('should add a new list', async () => {
         const { result } = renderHook(() => useBoardState(), { wrapper });
+        // Wait for initial load
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+
+        // Wait for initial load
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
 
         await act(async () => {
             result.current.addList('New List');
@@ -57,16 +70,17 @@ describe('useBoardState', () => {
 
         // Wait for state update
         await act(async () => {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 0));
         });
 
-        expect(result.current.columns.length).toBeGreaterThan(0);
-        const newList = result.current.columns.find(col => col.title === 'New List');
-        expect(newList).toBeDefined();
+        const list = result.current.columns.find(col => col.title === 'New List');
+        expect(list).toBeDefined();
     });
 
     test('should not add list with empty title', async () => {
         const { result } = renderHook(() => useBoardState(), { wrapper });
+        // Wait for initial load
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
         const initialLength = result.current.columns.length;
 
         await act(async () => {
@@ -83,6 +97,8 @@ describe('useBoardState', () => {
 
     test('should add a card to a list', async () => {
         const { result } = renderHook(() => useBoardState(), { wrapper });
+        // Wait for initial load
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 
         // First, add a list
         await act(async () => {
@@ -113,6 +129,8 @@ describe('useBoardState', () => {
 
     test('should update a card', async () => {
         const { result } = renderHook(() => useBoardState(), { wrapper });
+        // Wait for initial load
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 
         // Setup: Add list and card
         await act(async () => {
@@ -155,6 +173,8 @@ describe('useBoardState', () => {
 
     test('should delete a card', async () => {
         const { result } = renderHook(() => useBoardState(), { wrapper });
+        // Wait for initial load
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 
         // Setup: Add list and card
         await act(async () => {
@@ -193,6 +213,8 @@ describe('useBoardState', () => {
 
     test('should edit list title', async () => {
         const { result } = renderHook(() => useBoardState(), { wrapper });
+        // Wait for initial load
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 
         // Setup: Add list
         await act(async () => {
@@ -221,6 +243,8 @@ describe('useBoardState', () => {
 
     test('should archive a list', async () => {
         const { result } = renderHook(() => useBoardState(), { wrapper });
+        // Wait for initial load
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 
         // Setup: Add list
         await act(async () => {
@@ -251,6 +275,8 @@ describe('useBoardState', () => {
 
     test('should find card by ID', async () => {
         const { result } = renderHook(() => useBoardState(), { wrapper });
+        // Wait for initial load
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 
         // Setup: Add list and card
         await act(async () => {
@@ -278,6 +304,8 @@ describe('useBoardState', () => {
 
     test('should find list by ID', async () => {
         const { result } = renderHook(() => useBoardState(), { wrapper });
+        // Wait for initial load
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 
         // Setup: Add list
         await act(async () => {
@@ -296,13 +324,15 @@ describe('useBoardState', () => {
         expect(foundList.title).toBe('Test List');
     });
 
-    test('should return null for non-existent card', () => {
+    test('should return null for non-existent card', async () => {
         const { result } = renderHook(() => useBoardState(), { wrapper });
+        // Wait for initial load
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
         const card = result.current.findCardById('non-existent-id');
         expect(card).toBeNull();
     });
 
-    test('should return null for non-existent list', () => {
+    test('should return null for non-existent list', async () => {
         const { result } = renderHook(() => useBoardState(), { wrapper });
         const list = result.current.findListById('non-existent-id');
         expect(list).toBeNull();

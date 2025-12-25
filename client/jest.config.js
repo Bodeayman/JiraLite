@@ -1,12 +1,30 @@
 export default {
     testEnvironment: 'jsdom',
-    setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+    transform: {
+        '^.+\\.(js|jsx)$': 'babel-jest',
+    },
     moduleNameMapper: {
-        '\\.(css|less|sass|scss)$': 'identity-obj-proxy',
+        '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
         '\\.(gif|ttf|eot|svg|png)$': '<rootDir>/__mocks__/fileMock.js',
     },
-    transform: {
-        "^.+\\.(js|jsx)$": "babel-jest",
+    setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+    transformIgnorePatterns: [
+        'node_modules/(?!(uuid)/)',
+    ],
+    testPathIgnorePatterns: ['/node_modules/', '/e2e/'],
+    collectCoverageFrom: [
+        'src/**/*.{js,jsx}',
+        '!src/main.jsx',
+        '!src/vite-env.d.ts',
+        '!src/scripts/**',
+        '!src/services/api.js'
+    ],
+    coverageThreshold: {
+        global: {
+            lines: 80,
+            branches: 70,
+            functions: 80,
+            statements: 80,
+        },
     },
-    roots: ["<rootDir>/src"]
 };
