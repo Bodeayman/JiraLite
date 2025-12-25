@@ -3,6 +3,7 @@ import Card from './Card';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import VirtualizedCardList from './VirtualizedCardList';
 
 const ListColumn = memo(({ id, title, cards = [], onAddCard, onEditName, onArchiveList, onCardClick }) => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -124,19 +125,10 @@ const ListColumn = memo(({ id, title, cards = [], onAddCard, onEditName, onArchi
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-0">
-                <SortableContext items={useMemo(() => cards.map(c => c.id), [cards])} strategy={verticalListSortingStrategy}>
-                    {cards.map((card) => (
-                        <Card
-                            key={card.id}
-                            id={card.id}
-                            title={card.title}
-                            tags={card.tags}
-                            onClick={() => onCardClick(card)}
-                        />
-                    ))}
-                </SortableContext>
-            </div>
+            <VirtualizedCardList
+                cards={cards}
+                onCardClick={onCardClick}
+            />
         </div>
     );
 });
