@@ -140,7 +140,7 @@ const ListColumn = memo(({ id, title, cards = [], onAddCard, onEditName, onArchi
                         ref={buttonRef}
                         onClick={handleMenuToggle}
                         onKeyDown={handleMenuButtonKeyDown}
-                        className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-white/60 transition-all focus:outline-none focus:ring-2 focus:ring-violet-500"
+                        className="text-slate-500 hover:text-slate-700 p-1.5 rounded-lg hover:bg-white/60 transition-all focus:outline-none focus:ring-2 focus:ring-violet-500"
                         onPointerDown={e => e.stopPropagation()}
                         aria-label={`${title} list options`}
                         aria-haspopup="true"

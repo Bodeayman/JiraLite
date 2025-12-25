@@ -121,7 +121,7 @@ const CardDetailModal = memo(({ card, onClose, onDelete, onUpdate }) => {
                     <div className="w-full mr-8">
                         <label
                             htmlFor="card-title-input"
-                            className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1"
+                            className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1"
                         >
                             Card Title
                         </label>
@@ -131,14 +131,14 @@ const CardDetailModal = memo(({ card, onClose, onDelete, onUpdate }) => {
                             type="text"
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            className="w-full bg-transparent text-xl font-bold text-slate-800 border-none p-0 focus:ring-0 placeholder-slate-300"
+                            className="w-full bg-transparent text-xl font-bold text-slate-800 border-none p-0 focus:ring-0 placeholder-slate-400"
                             placeholder="Enter card title..."
                             aria-required="true"
                         />
                     </div>
                     <button
                         onClick={onClose}
-                        className="text-slate-400 hover:text-slate-600 bg-white hover:bg-slate-100 p-2 rounded-full transition-all shadow-sm border border-slate-100"
+                        className="text-slate-500 hover:text-slate-600 bg-white hover:bg-slate-100 p-2 rounded-full transition-all shadow-sm border border-slate-100"
                         aria-label="Close modal"
                     >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
