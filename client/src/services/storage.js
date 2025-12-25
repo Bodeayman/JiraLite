@@ -1,18 +1,27 @@
 const DB_NAME = 'JiraLiteDB';
-const DB_VERSION = 1;
+const DB_VERSION = 3; // Incremented to 3 to force 'queue' creation if missed
 const STORES = {
     LISTS: 'lists',
     CARDS: 'cards',
-    TAGS: 'tags'
+    TAGS: 'tags',
+    QUEUE: 'queue'
 };
 
 const openDB = () => {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-        request.onerror = (event) => reject(event.target.error);
+        request.onerror = (event) => {
+            console.error("IDB Open Error:", event.target.error);
+            reject(event.target.error);
+        };
+
+        request.onblocked = (event) => {
+            console.warn("IDB Upgrade Blocked. Please close other tabs of this app.");
+        };
 
         request.onupgradeneeded = (event) => {
+            console.log("IDB Upgrading from ", event.oldVersion, "to", event.newVersion);
             const db = event.target.result;
             if (!db.objectStoreNames.contains(STORES.LISTS)) {
                 db.createObjectStore(STORES.LISTS, { keyPath: 'id' });
@@ -24,6 +33,10 @@ const openDB = () => {
             if (!db.objectStoreNames.contains(STORES.TAGS)) {
                 const tagStore = db.createObjectStore(STORES.TAGS, { keyPath: 'id' });
                 tagStore.createIndex('card_id', 'card_id', { unique: false });
+            }
+            if (!db.objectStoreNames.contains(STORES.QUEUE)) {
+                console.log("Creating QUEUE store");
+                db.createObjectStore(STORES.QUEUE, { autoIncrement: true });
             }
         };
 
@@ -57,7 +70,7 @@ export const loadBoard = async () => {
         const listCards = cards
             .filter(card => card.list_id === list.id)
             .sort((a, b) => a.order_id - b.order_id)
-            .map(card => ({ ...card, tags: card.tags || [] })); // Ensure tags exists (simple array for now based on request context, or we could fetch tags store if strict normalization needed)
+            .map(card => ({ ...card, tags: card.tags || [] }));
 
         return {
             ...list,
@@ -80,9 +93,6 @@ export const saveList = async (list) => {
 export const saveCard = async (card) => {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-        // Ensure tags are stored if we are keeping them on the card object for simplicity
-        // or strip them if normalized. The request mentioned tags entity but also said "schema... tags (Card_id, name)".
-        // For compliance with "tags entity", we should save tags separately, but for now let's persist the card.
         const request = getStore(db, STORES.CARDS, 'readwrite').put(card);
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
@@ -100,7 +110,6 @@ export const deleteCard = async (id) => {
 
 export const deleteList = async (id) => {
     const db = await openDB();
-    // Should transactionally delete cards too, but keeping simple for now
     return new Promise((resolve, reject) => {
         const request = getStore(db, STORES.LISTS, 'readwrite').delete(id);
         request.onsuccess = () => resolve(request.result);
@@ -130,5 +139,57 @@ export const updateCardsOrder = async (cards) => {
     return new Promise((resolve, reject) => {
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
+    });
+};
+
+// --- Queue Methods ---
+
+export const addToQueue = async (action) => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        // Add timestamp for debugging/sorting if needed, though autoIncrement handles order
+        const item = { ...action, timestamp: Date.now() };
+        const request = getStore(db, STORES.QUEUE, 'readwrite').add(item);
+        request.onsuccess = () => resolve(request.result); // Returns key
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// Get all items in queue, with their keys
+export const getQueue = async () => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const store = getStore(db, STORES.QUEUE);
+        const request = store.openCursor();
+        const items = [];
+        request.onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (cursor) {
+                items.push({ key: cursor.key, val: cursor.value });
+                cursor.continue();
+            } else {
+                resolve(items);
+            }
+        };
+        request.onerror = () => reject(request.error);
+    });
+};
+
+// Remove an item by key (used after successful sync)
+export const removeFromQueue = async (key) => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const request = getStore(db, STORES.QUEUE, 'readwrite').delete(key);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const clearQueue = async () => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const request = getStore(db, STORES.QUEUE, 'readwrite').clear();
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
     });
 };

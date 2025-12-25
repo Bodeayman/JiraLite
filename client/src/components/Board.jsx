@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, lazy, Suspense } from 'react';
+import ErrorBoundary from './ErrorBoundary';
 import Toolbar from './Toolbar';
 import ListColumn from './ListColumn';
 import ConfirmDialog from './ConfirmDialog';
@@ -7,7 +8,7 @@ import LoadingFallback from './LoadingFallback';
 import { useBoard } from '../context/BoardProvider';
 // Import custom hooks for better code organization and functionality
 import { useBoardState } from '../hooks/useBoardState';
-import { useOfflineSync } from '../hooks/useOfflineSync';
+
 // Note: useUndoRedo is available but requires state management refactoring to integrate fully
 // import { useUndoRedo } from '../hooks/useUndoRedo';
 
@@ -53,21 +54,7 @@ const Board = () => {
 
     // Use useBoardState hook for cleaner, more maintainable board operations
     // This hook wraps reducer actions and provides convenient methods instead of raw dispatch calls
-    // Why it wasn't used before: The hook file existed but was empty (just a stub)
     const boardState = useBoardState();
-
-    // Use useOfflineSync for handling persistence, sync queue, and retry logic
-    // This hook manages offline synchronization and ensures operations are persisted
-    // Why it wasn't used before: The hook file existed but was empty (just a stub)
-    const { queueOperation, isSyncing, syncQueue } = useOfflineSync({
-        enableServerSync: false, // Set to true when API service is implemented
-        onSyncSuccess: (operation) => {
-            console.log('Operation synced successfully:', operation.type);
-        },
-        onSyncError: (operation, error) => {
-            console.error('Sync failed for operation:', operation.type, error);
-        },
-    });
 
     // Note: useUndoRedo hook is available but would require refactoring the state management
     // to track state changes. Currently, BoardProvider handles state via reducer.
@@ -188,11 +175,6 @@ const Board = () => {
         if (activeType === 'Column' && active.id !== over.id) {
             // Using useBoardState hook for cleaner API
             boardState.moveList(active.id, over.id);
-            // Also queue for offline sync
-            queueOperation({
-                type: 'MOVE_LIST',
-                payload: { activeId: active.id, overId: over.id }
-            });
         } else if (activeType === 'Card') {
             const activeColumnId = findContainer(active.id);
             const overColumnId = findContainer(over.id) || (over.data.current?.type === 'Column' ? over.id : null);
@@ -200,22 +182,12 @@ const Board = () => {
             if (activeColumnId && overColumnId) {
                 // Using useBoardState hook for cleaner API
                 boardState.moveCard(active.id, over.id, activeColumnId, overColumnId);
-                // Also queue for offline sync
-                queueOperation({
-                    type: 'MOVE_CARD',
-                    payload: {
-                        activeId: active.id,
-                        overId: over.id,
-                        activeColumnId: activeColumnId,
-                        overColumnId: overColumnId
-                    }
-                });
             }
         }
 
         setActiveId(null);
         setActiveItem(null);
-    }, [boardState, queueOperation, findContainer]);
+    }, [boardState, findContainer]);
 
     const dropAnimation = useMemo(() => ({
         sideEffects: defaultDropAnimationSideEffects({
@@ -234,22 +206,15 @@ const Board = () => {
             () => {
                 // Using useBoardState hook for cleaner API
                 boardState.deleteCard(id);
-                // Also queue for offline sync (though BoardProvider already handles persistence)
-                queueOperation({ type: 'DELETE_CARD', payload: id });
                 handleCloseModal();
             }
         );
-    }, [confirmAction, boardState, queueOperation, handleCloseModal]);
+    }, [confirmAction, boardState, handleCloseModal]);
 
     const handleUpdateCard = useCallback((id, updates) => {
         // Using useBoardState hook for cleaner API instead of raw dispatch
         boardState.updateCard(id, updates);
-        // Also queue for offline sync
-        queueOperation({
-            type: 'UPDATE_CARD',
-            payload: { id, updates }
-        });
-    }, [boardState, queueOperation]);
+    }, [boardState]);
 
     return (
         <DndContext
@@ -274,14 +239,7 @@ const Board = () => {
                                         (title) => {
                                             if (title) {
                                                 // Using useBoardState hook for cleaner API
-                                                const cardId = boardState.addCard(column.id, title);
-                                                // Also queue for offline sync
-                                                if (cardId) {
-                                                    queueOperation({
-                                                        type: 'ADD_CARD',
-                                                        payload: { id: cardId, columnId: column.id, title }
-                                                    });
-                                                }
+                                                boardState.addCard(column.id, title);
                                             }
                                         }
                                     );
@@ -297,11 +255,6 @@ const Board = () => {
                                             if (newTitle) {
                                                 // Using useBoardState hook for cleaner API
                                                 boardState.editListTitle(column.id, newTitle);
-                                                // Also queue for offline sync
-                                                queueOperation({
-                                                    type: 'EDIT_LIST_TITLE',
-                                                    payload: { id: column.id, title: newTitle }
-                                                });
                                             }
                                         }
                                     );
@@ -314,11 +267,6 @@ const Board = () => {
                                         () => {
                                             // Using useBoardState hook for cleaner API
                                             boardState.archiveList(column.id);
-                                            // Also queue for offline sync
-                                            queueOperation({
-                                                type: 'ARCHIVE_LIST',
-                                                payload: column.id
-                                            });
                                         }
                                     );
                                 };
@@ -359,14 +307,39 @@ const Board = () => {
                 </DragOverlay>
 
                 {selectedCard && (
-                    <Suspense fallback={<LoadingFallback message="Loading card details modal..." />}>
-                        <CardDetailModal
-                            card={selectedCard}
-                            onClose={handleCloseModal}
-                            onDelete={handleDeleteCard}
-                            onUpdate={handleUpdateCard}
-                        />
-                    </Suspense>
+                    <ErrorBoundary fallback={(error, reset) => (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                            <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full text-center">
+                                <h3 className="text-xl font-bold text-slate-800 mb-2">Unable to Load Card</h3>
+                                <p className="text-slate-600 mb-6">
+                                    We couldn't load the card details. This usually happens if you are offline and this part of the app hasn't been cached yet.
+                                </p>
+                                <div className="flex justify-center gap-3">
+                                    <button
+                                        onClick={handleCloseModal}
+                                        className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                                    >
+                                        Close
+                                    </button>
+                                    <button
+                                        onClick={reset}
+                                        className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition"
+                                    >
+                                        Try Again
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}>
+                        <Suspense fallback={<LoadingFallback message="Loading card details modal..." />}>
+                            <CardDetailModal
+                                card={selectedCard}
+                                onClose={handleCloseModal}
+                                onDelete={handleDeleteCard}
+                                onUpdate={handleUpdateCard}
+                            />
+                        </Suspense>
+                    </ErrorBoundary>
                 )}
 
                 <ConfirmDialog

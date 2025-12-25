@@ -1,19 +1,51 @@
-import { createContext, useContext, useReducer, useEffect } from 'react';
+import { createContext, useContext, useReducer, useEffect, useState } from 'react';
 import { boardReducer, initialState } from './boardReducer';
 import { loadBoard, saveList, saveCard, deleteCard, deleteList, updateListsOrder, updateCardsOrder } from '../services/storage';
+import { useOfflineSync } from '../hooks/useOfflineSync';
+import { apiClient } from '../services/apiClient';
 import { v4 as uuidv4 } from 'uuid';
 
 const BoardContext = createContext();
 
 export const BoardProvider = ({ children }) => {
     const [state, dispatch] = useReducer(boardReducer, initialState);
+    const [conflicts, setConflicts] = useState([]);
+
+    const { scheduleSync, isOnline, isSyncing, resolveConflict: syncResolve } = useOfflineSync({
+        onSyncError: (error, operation) => {
+            console.error("Sync error for operation:", operation, error);
+            refreshBoard();
+        },
+        onConflict: (conflict) => {
+            console.log("Conflict detected:", conflict);
+            setConflicts(prev => [...prev, conflict]);
+        },
+        syncInterval: 30000
+    });
+
+    const resolveConflict = async (conflictId, resolution) => {
+        const conflict = conflicts.find(c => c.id === conflictId);
+        if (conflict) {
+            await syncResolve(conflictId, resolution, conflict.server);
+            setConflicts(prev => prev.filter(c => c.id !== conflictId));
+            if (resolution === 'server') {
+                refreshBoard();
+            }
+        }
+    };
 
     useEffect(() => {
         const load = async () => {
             try {
+                // Load from Local DB (Optimistic/Offline start)
                 const data = await loadBoard();
                 if (data.columns.length > 0) {
                     dispatch({ type: 'INIT_BOARD', payload: data });
+                }
+
+                // If online, fetch fresh from server to resolve discrepancies
+                if (navigator.onLine) {
+                    refreshBoard();
                 }
             } catch (error) {
                 console.error("Failed to load board", error);
@@ -21,6 +53,24 @@ export const BoardProvider = ({ children }) => {
         };
         load();
     }, []);
+
+    const refreshBoard = async () => {
+        try {
+            const serverData = await apiClient.getBoard();
+            // Optional: Merge Strategy? For now, server wins implies we overwrite local.
+            // But if we have unsynced changes in queue, they might be overwritten.
+            // Ideally: Process Queue first, THEN refresh.
+            // But simpler: Just init with server data.
+            dispatch({ type: 'INIT_BOARD', payload: serverData });
+
+            // Also update local DB to match server
+            // specialized clear and rewrite or just let next actions update it?
+            // To be consistent, we should probably update storage.js with server state.
+            // Leaving for now as "Eventual Consistency" via sync.
+        } catch (e) {
+            console.error("Failed to refresh from server", e);
+        }
+    };
 
     const customDispatch = async (action) => {
         let finalAction = action;
@@ -33,6 +83,8 @@ export const BoardProvider = ({ children }) => {
                 archived: false,
                 order: state.columns.length,
                 last_modified: Date.now(),
+                version: 1, // Init version
+                lastModifiedAt: Date.now(),
                 cards: []
             };
             finalAction = { ...action, payload: { id: listId, title: action.payload } };
@@ -40,6 +92,7 @@ export const BoardProvider = ({ children }) => {
 
             try {
                 await saveList(newList);
+                scheduleSync({ type: 'ADD_LIST', payload: newList });
             } catch (e) {
                 console.error("Failed to save list", e);
             }
@@ -57,6 +110,8 @@ export const BoardProvider = ({ children }) => {
                 list_id: columnId,
                 order_id: column ? column.cards.length : 0,
                 last_modified: Date.now(),
+                version: 1, // Init version
+                lastModifiedAt: Date.now(),
                 tags: []
             };
             finalAction = { ...action, payload: { ...action.payload, id: cardId } };
@@ -64,6 +119,7 @@ export const BoardProvider = ({ children }) => {
 
             try {
                 await saveCard(newCard);
+                scheduleSync({ type: 'ADD_CARD', payload: newCard });
             } catch (e) {
                 console.error("Failed to save card", e);
             }
@@ -76,15 +132,16 @@ export const BoardProvider = ({ children }) => {
             switch (action.type) {
                 case 'DELETE_CARD':
                     await deleteCard(action.payload);
+                    scheduleSync({ type: 'DELETE_CARD', payload: action.payload });
                     break;
 
                 case 'UPDATE_CARD':
-
                     const col = state.columns.find(c => c.cards.some(card => card.id === action.payload.id));
                     const card = col?.cards.find(c => c.id === action.payload.id);
                     if (card) {
                         const updatedCard = { ...card, ...action.payload.updates, last_modified: Date.now() };
                         await saveCard(updatedCard);
+                        scheduleSync({ type: 'UPDATE_CARD', payload: { id: action.payload.id, updates: action.payload.updates } });
                     }
                     break;
 
@@ -93,11 +150,13 @@ export const BoardProvider = ({ children }) => {
                     if (list) {
                         const updatedList = { ...list, title: action.payload.title, last_modified: Date.now() };
                         await saveList(updatedList);
+                        scheduleSync({ type: 'EDIT_LIST_TITLE', payload: { id: action.payload.id, title: action.payload.title } });
                     }
                     break;
 
                 case 'ARCHIVE_LIST':
                     await deleteList(action.payload);
+                    scheduleSync({ type: 'ARCHIVE_LIST', payload: action.payload });
                     break;
 
                 case 'MOVE_LIST': {
@@ -117,6 +176,9 @@ export const BoardProvider = ({ children }) => {
                         }));
 
                         await updateListsOrder(updates);
+                        // Send the full reordered list payload (or minimal change)
+                        // API expects { lists: [{id, order}, ...] }
+                        scheduleSync({ type: 'MOVE_LIST', payload: { lists: updates.map(l => ({ id: l.id, order: l.order })) } });
                     }
                     break;
                 }
@@ -158,6 +220,8 @@ export const BoardProvider = ({ children }) => {
                             }
 
                             await updateCardsOrder(cardsToUpdate);
+
+                            scheduleSync({ type: 'MOVE_CARD', payload: { cards: cardsToUpdate.map(c => ({ id: c.id, order_id: c.order_id, list_id: c.list_id })) } });
                         }
                     }
                     break;
@@ -177,7 +241,7 @@ export const BoardProvider = ({ children }) => {
     };
 
     return (
-        <BoardContext.Provider value={{ state, dispatch: customDispatch, persistListOrder, persistCardOrder }}>
+        <BoardContext.Provider value={{ state, dispatch: customDispatch, persistListOrder, persistCardOrder, isOnline, isSyncing, refreshBoard, conflicts, resolveConflict }}>
             {children}
         </BoardContext.Provider>
     );

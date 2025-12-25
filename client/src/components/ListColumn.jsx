@@ -1,14 +1,14 @@
-import { useState, useRef, useEffect, memo, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, memo, useCallback } from 'react';
 import Card from './Card';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import VirtualizedCardList from './VirtualizedCardList';
 
 const ListColumn = memo(({ id, title, cards = [], onAddCard, onEditName, onArchiveList, onCardClick }) => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef(null);
     const buttonRef = useRef(null);
+    const menuItemsRef = useRef([]);
 
     const {
         attributes,
@@ -28,7 +28,9 @@ const ListColumn = memo(({ id, title, cards = [], onAddCard, onEditName, onArchi
         opacity: isDragging ? 0.5 : 1
     };
 
-    // Close menu when clicking outside
+    /* =========================
+       Close menu on outside click
+    ========================= */
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (
@@ -49,6 +51,50 @@ const ListColumn = memo(({ id, title, cards = [], onAddCard, onEditName, onArchi
         }
     }, [isMenuOpen]);
 
+    /* =========================
+       Focus first menu item when opened
+    ========================= */
+    useEffect(() => {
+        if (isMenuOpen && menuItemsRef.current[0]) {
+            menuItemsRef.current[0].focus();
+        }
+    }, [isMenuOpen]);
+
+    /* =========================
+       ESC key and arrow navigation
+    ========================= */
+    useEffect(() => {
+        if (!isMenuOpen) return;
+
+        const handleKeyDown = (e) => {
+            // Close on ESC
+            if (e.key === 'Escape') {
+                setIsMenuOpen(false);
+                buttonRef.current?.focus();
+                return;
+            }
+
+            // Arrow key navigation
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const items = menuItemsRef.current.filter(item => item !== null);
+                const currentIndex = items.indexOf(document.activeElement);
+
+                let nextIndex;
+                if (e.key === 'ArrowDown') {
+                    nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
+                } else {
+                    nextIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
+                }
+
+                items[nextIndex]?.focus();
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [isMenuOpen]);
+
     const handleMenuToggle = useCallback((e) => {
         e.stopPropagation();
         setIsMenuOpen(prev => !prev);
@@ -58,8 +104,18 @@ const ListColumn = memo(({ id, title, cards = [], onAddCard, onEditName, onArchi
         return (e) => {
             e.stopPropagation();
             setIsMenuOpen(false);
+            buttonRef.current?.focus(); // Return focus to toggle button
             action();
         };
+    }, []);
+
+    // Keyboard handler for menu toggle button
+    const handleMenuButtonKeyDown = useCallback((e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsMenuOpen(prev => !prev);
+        }
     }, []);
 
     return (
@@ -73,15 +129,30 @@ const ListColumn = memo(({ id, title, cards = [], onAddCard, onEditName, onArchi
                 {...listeners}
                 className="p-4 cursor-grab active:cursor-grabbing flex justify-between items-center bg-white/40 rounded-t-xl border-b border-white/50"
             >
-                <h3 className="font-bold text-slate-700">{title}</h3>
+                <h3
+                    id={`list-title-${id}`}
+                    className="font-bold text-slate-700"
+                >
+                    {title}
+                </h3>
                 <div className="relative">
                     <button
                         ref={buttonRef}
                         onClick={handleMenuToggle}
-                        className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-white/60 transition-all"
+                        onKeyDown={handleMenuButtonKeyDown}
+                        className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-white/60 transition-all focus:outline-none focus:ring-2 focus:ring-violet-500"
                         onPointerDown={e => e.stopPropagation()}
+                        aria-label={`${title} list options`}
+                        aria-haspopup="true"
+                        aria-expanded={isMenuOpen}
+                        aria-controls={`menu-${id}`}
                     >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+                        <svg
+                            className="w-4 h-4"
+                            fill="currentColor"
+                            viewBox="0 0 16 16"
+                            aria-hidden="true"
+                        >
                             <circle cx="8" cy="3" r="1.5" />
                             <circle cx="8" cy="8" r="1.5" />
                             <circle cx="8" cy="13" r="1.5" />
@@ -90,33 +161,69 @@ const ListColumn = memo(({ id, title, cards = [], onAddCard, onEditName, onArchi
                     {isMenuOpen && (
                         <div
                             ref={menuRef}
+                            id={`menu-${id}`}
+                            role="menu"
+                            aria-labelledby={`list-title-${id}`}
                             className="absolute right-0 top-full mt-1 w-40 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden"
                             onPointerDown={e => e.stopPropagation()}
                         >
                             <button
+                                ref={el => menuItemsRef.current[0] = el}
+                                role="menuitem"
                                 onClick={handleMenuAction(onAddCard)}
-                                className="block w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition-colors"
+                                className="block w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition-colors focus:outline-none focus:bg-violet-50"
+                                aria-label={`Add card to ${title}`}
                             >
                                 <span className="flex items-center gap-2">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+                                    <svg
+                                        className="w-4 h-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                        aria-hidden="true"
+                                    >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+                                    </svg>
                                     Add Card
                                 </span>
                             </button>
                             <button
+                                ref={el => menuItemsRef.current[1] = el}
+                                role="menuitem"
                                 onClick={handleMenuAction(onEditName)}
-                                className="block w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition-colors border-t border-slate-100"
+                                className="block w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition-colors border-t border-slate-100 focus:outline-none focus:bg-violet-50"
+                                aria-label={`Edit name of ${title}`}
                             >
                                 <span className="flex items-center gap-2">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                                    <svg
+                                        className="w-4 h-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                        aria-hidden="true"
+                                    >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                    </svg>
                                     Edit Name
                                 </span>
                             </button>
                             <button
+                                ref={el => menuItemsRef.current[2] = el}
+                                role="menuitem"
                                 onClick={handleMenuAction(onArchiveList)}
-                                className="block w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors border-t border-slate-100"
+                                className="block w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors border-t border-slate-100 focus:outline-none focus:bg-red-50"
+                                aria-label={`Archive ${title} list`}
                             >
                                 <span className="flex items-center gap-2">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+                                    <svg
+                                        className="w-4 h-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                        aria-hidden="true"
+                                    >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path>
+                                    </svg>
                                     Archive List
                                 </span>
                             </button>
