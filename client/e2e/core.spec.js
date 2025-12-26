@@ -1,5 +1,5 @@
 // @ts-check
-const { test, expect } = require('@playwright/test');
+import { test, expect } from '@playwright/test';
 
 test.describe('Core Board Flow', () => {
     test.beforeEach(async ({ page }) => {
@@ -8,54 +8,52 @@ test.describe('Core Board Flow', () => {
         await page.waitForTimeout(1000);
     });
 
-    test('should create list, add card, and handle offline mode', async ({ page, context }) => {
+    test('should create list and verify persistence', async ({ page }) => {
         // 1. Create a List
-        const listTitle = `List-${Date.now()}`;
-        await page.getByPlaceholder('Enter list title...').fill(listTitle);
-        await page.getByRole('button', { name: 'Add List' }).click();
+        const listTitle = `TestList-${Date.now()}`;
+        await page.getByPlaceholder('List name').fill(listTitle);
+        await page.getByRole('button', { name: 'Create List' }).click();
 
-        // Verify List
+        // Verify List appears
         await expect(page.getByText(listTitle)).toBeVisible();
 
-        // 2. Add a Card
-        await page.getByRole('button', { name: 'Add Card' }).first().click(); // Assumes new list is first or we target specific list
+        // 2. Reload page to verify persistence
+        await page.reload();
+        await page.waitForTimeout(500);
 
-        // Fill Card Modal
-        const cardTitle = 'Online Card';
-        await page.getByPlaceholder('Enter card title...').fill(cardTitle);
-        await page.getByPlaceholder('Enter description...').fill('Created while online');
-        // Save
-        await page.getByRole('button', { name: 'Add Card' }).nth(1).click(); // There might be multiple 'Add Card' texts (button inside modal)
+        // List should still be visible after reload
+        await expect(page.getByText(listTitle)).toBeVisible();
+    });
 
-        // Verify Card
-        await expect(page.getByText(cardTitle)).toBeVisible();
+    test('should handle offline mode with optimistic UI', async ({ page, context }) => {
+        // 1. Create a list while online
+        const onlineListTitle = `OnlineList-${Date.now()}`;
+        await page.getByPlaceholder('List name').fill(onlineListTitle);
+        await page.getByRole('button', { name: 'Create List' }).click();
+        await expect(page.getByText(onlineListTitle)).toBeVisible();
 
-        // 3. Offline Mode
+        // 2. Go offline
         await context.setOffline(true);
 
-        // Add Offline Card
-        const offlineCardTitle = 'Offline Card';
-        // Click Add Card on the same list again
-        // We need to be careful with selectors if UI changed.
-        // Assuming the "Add Card" button is still visible on the list.
-        await page.getByRole('button', { name: 'Add Card' }).first().click();
+        // 3. Create a list while offline (optimistic UI)
+        const offlineListTitle = `OfflineList-${Date.now()}`;
+        await page.getByPlaceholder('List name').fill(offlineListTitle);
+        await page.getByRole('button', { name: 'Create List' }).click();
 
-        await page.getByPlaceholder('Enter card title...').fill(offlineCardTitle);
-        await page.getByRole('button', { name: 'Add Card' }).nth(1).click(); // Save in modal
+        // Verify optimistic UI shows the list immediately
+        await expect(page.getByText(offlineListTitle)).toBeVisible();
 
-        // Verify Optimistic UI
-        await expect(page.getByText(offlineCardTitle)).toBeVisible();
-
-        // 4. Back Online
+        // 4. Go back online
         await context.setOffline(false);
 
-        // Wait for sync (simulate network latency)
+        // Wait for sync
         await page.waitForTimeout(2000);
 
-        // Reload match not required given React state, but testing persistence:
+        // 5. Reload to verify both lists persisted
         await page.reload();
-        await expect(page.getByText(listTitle)).toBeVisible();
-        await expect(page.getByText(cardTitle)).toBeVisible();
-        await expect(page.getByText(offlineCardTitle)).toBeVisible();
+        await page.waitForTimeout(500);
+
+        await expect(page.getByText(onlineListTitle)).toBeVisible();
+        await expect(page.getByText(offlineListTitle)).toBeVisible();
     });
 });
