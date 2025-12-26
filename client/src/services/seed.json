@@ -1,0 +1,15 @@
+[
+    {
+        "id": "l1",
+        "title": "To Do",
+        "cards": [
+            {
+                "id": "c1",
+                "title": "Task 1",
+                "tags": [
+                    "bug"
+                ]
+            }
+        ]
+    }
+]

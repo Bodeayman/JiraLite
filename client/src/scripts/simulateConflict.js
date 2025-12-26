@@ -1,4 +1,5 @@
-import fetch from 'node-fetch';
+// Using native fetch available in Node.js 18+
+
 
 const API_URL = 'http://localhost:3001/api';
 

@@ -4,17 +4,35 @@ const request = async (endpoint, options = {}) => {
     const url = `${BASE_URL}${endpoint}`;
     const headers = { 'Content-Type': 'application/json', ...options.headers };
 
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
     try {
-        const response = await fetch(url, { ...options, headers });
+        const response = await fetch(url, { 
+            ...options, 
+            headers,
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
         if (!response.ok) {
-            throw new Error(`API Error ${response.status}: ${response.statusText}`);
+            const error = new Error(`API Error ${response.status}`);
+            error.status = response.status;
+            try {
+                const data = await response.json();
+                error.serverItem = data.serverItem || data;
+            } catch (e) { }
+            throw error;
         }
         return await response.json();
     } catch (error) {
-        // Distinguish between network error (offline) and server error (500/400)
-        // 'Failed to fetch' usually means network error or server down
-        if (error.message.includes('Failed to fetch')) {
-            throw new Error('NETWORK_ERROR');
+        clearTimeout(timeoutId);
+        // Handle network errors silently - app works offline
+        if (error.name === 'AbortError' || error.message.includes('Failed to fetch') || error.message === 'NETWORK_ERROR') {
+            const networkError = new Error('NETWORK_ERROR');
+            networkError.isOffline = true;
+            throw networkError;
         }
         throw error;
     }

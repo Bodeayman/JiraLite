@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useEffect, useState } from 'react';
+import { createContext, useContext, useReducer, useEffect, useState, useCallback, useRef } from 'react';
 import { boardReducer, initialState } from './boardReducer';
 import { loadBoard, saveList, saveCard, deleteCard, deleteList, updateListsOrder, updateCardsOrder } from '../services/storage';
 import { useOfflineSync } from '../hooks/useOfflineSync';
@@ -10,10 +10,40 @@ const BoardContext = createContext();
 export const BoardProvider = ({ children }) => {
     const [state, dispatch] = useReducer(boardReducer, initialState);
     const [conflicts, setConflicts] = useState([]);
+    const [syncErrors, setSyncErrors] = useState([]);
+    const previousStateRef = useRef(null);
 
     const { scheduleSync, isOnline, isSyncing, resolveConflict: syncResolve } = useOfflineSync({
         onSyncError: (error, operation) => {
-            console.error("Sync error for operation:", operation, error);
+            // Network errors are handled silently (offline mode)
+            if (error.message === 'NETWORK_ERROR' || error.isOffline) {
+                return;
+            }
+
+            // For non-network errors, revert optimistic update and show error
+            if (previousStateRef.current) {
+                dispatch({ 
+                    type: 'REVERT_OPTIMISTIC_UPDATE', 
+                    payload: { previousState: previousStateRef.current } 
+                });
+                previousStateRef.current = null;
+            }
+
+            // Show error to user
+            const errorMessage = error.message || 'Failed to sync changes';
+            setSyncErrors(prev => [...prev, {
+                id: Date.now(),
+                message: errorMessage,
+                operation: operation.type,
+                timestamp: Date.now()
+            }]);
+
+            // Auto-dismiss error after 5 seconds
+            setTimeout(() => {
+                setSyncErrors(prev => prev.slice(1));
+            }, 5000);
+
+            // Try to refresh if server error (not network)
             refreshBoard();
         },
         onConflict: (conflict) => {
@@ -37,15 +67,18 @@ export const BoardProvider = ({ children }) => {
     useEffect(() => {
         const load = async () => {
             try {
-                // Load from Local DB (Optimistic/Offline start)
+                // Always load from local storage first (works offline)
                 const data = await loadBoard();
                 if (data.columns.length > 0) {
                     dispatch({ type: 'INIT_BOARD', payload: data });
                 }
 
-                // If online, fetch fresh from server to resolve discrepancies
-                if (navigator.onLine) {
-                    refreshBoard();
+                // Only try to refresh from server if we have no local data
+                // This prevents overwriting local data with empty server responses
+                if (navigator.onLine && data.columns.length === 0) {
+                    refreshBoard().catch(() => {
+                        // Silently fail - app works offline with local data
+                    });
                 }
             } catch (error) {
                 console.error("Failed to load board", error);
@@ -57,23 +90,96 @@ export const BoardProvider = ({ children }) => {
     const refreshBoard = async () => {
         try {
             const serverData = await apiClient.getBoard();
-            // Optional: Merge Strategy? For now, server wins implies we overwrite local.
-            // But if we have unsynced changes in queue, they might be overwritten.
-            // Ideally: Process Queue first, THEN refresh.
-            // But simpler: Just init with server data.
-            dispatch({ type: 'INIT_BOARD', payload: serverData });
-
-            // Also update local DB to match server
-            // specialized clear and rewrite or just let next actions update it?
-            // To be consistent, we should probably update storage.js with server state.
-            // Leaving for now as "Eventual Consistency" via sync.
+            // Only update if server has actual data (non-empty)
+            // Never overwrite local data with empty server data
+            if (serverData && serverData.columns && Array.isArray(serverData.columns) && serverData.columns.length > 0) {
+                // Server has data - merge with local (server wins for conflicts)
+                const currentLocalData = await loadBoard();
+                
+                // If local has data and server has data, merge them intelligently
+                if (currentLocalData.columns.length > 0) {
+                    // Merge: keep local items that don't exist on server, update items that exist on both
+                    const mergedColumns = [...currentLocalData.columns];
+                    const serverColumnIds = new Set(serverData.columns.map(col => col.id));
+                    
+                    // Update existing columns from server
+                    serverData.columns.forEach(serverCol => {
+                        const localIndex = mergedColumns.findIndex(col => col.id === serverCol.id);
+                        if (localIndex >= 0) {
+                            // Merge cards: keep local cards not on server, update cards that exist on both
+                            const localCol = mergedColumns[localIndex];
+                            const serverCardIds = new Set(serverCol.cards.map(card => card.id));
+                            const mergedCards = [...localCol.cards];
+                            
+                            // Update existing cards from server
+                            serverCol.cards.forEach(serverCard => {
+                                const localCardIndex = mergedCards.findIndex(card => card.id === serverCard.id);
+                                if (localCardIndex >= 0) {
+                                    // Server version wins for existing cards
+                                    mergedCards[localCardIndex] = serverCard;
+                                } else {
+                                    // Add new cards from server
+                                    mergedCards.push(serverCard);
+                                }
+                            });
+                            
+                            // Update column with merged cards
+                            mergedColumns[localIndex] = {
+                                ...serverCol,
+                                cards: mergedCards.sort((a, b) => (a.order_id || 0) - (b.order_id || 0))
+                            };
+                        } else {
+                            // Add new columns from server
+                            mergedColumns.push(serverCol);
+                        }
+                    });
+                    
+                    // Sort by order
+                    mergedColumns.sort((a, b) => (a.order || 0) - (b.order || 0));
+                    
+                    dispatch({ type: 'INIT_BOARD', payload: { columns: mergedColumns } });
+                    
+                    // Save merged data to local storage
+                    for (const column of mergedColumns) {
+                        const { cards, ...listData } = column;
+                        await saveList(listData);
+                        for (const card of cards) {
+                            await saveCard(card);
+                        }
+                    }
+                } else {
+                    // Local is empty, use server data
+                    dispatch({ type: 'INIT_BOARD', payload: serverData });
+                    
+                    // Save server data to local storage
+                    for (const column of serverData.columns) {
+                        const { cards, ...listData } = column;
+                        await saveList(listData);
+                        for (const card of cards) {
+                            await saveCard(card);
+                        }
+                    }
+                }
+            } else {
+                // Server returned empty data - keep local data, don't overwrite
+                if (process.env.NODE_ENV === 'development') {
+                    console.log("Server returned empty data, preserving local data");
+                }
+            }
         } catch (e) {
-            console.error("Failed to refresh from server", e);
+            // Silently fail - app works completely offline with local data
+            // Only log in development mode
+            if (process.env.NODE_ENV === 'development') {
+                console.log("Server unavailable, using local data (offline mode)");
+            }
         }
     };
 
     const customDispatch = async (action) => {
         let finalAction = action;
+
+        // Store previous state for optimistic update revert
+        previousStateRef.current = JSON.parse(JSON.stringify(state));
 
         if (action.type === 'ADD_LIST') {
             const listId = uuidv4();
@@ -83,18 +189,34 @@ export const BoardProvider = ({ children }) => {
                 archived: false,
                 order: state.columns.length,
                 last_modified: Date.now(),
-                version: 1, // Init version
+                version: 1,
                 lastModifiedAt: Date.now(),
                 cards: []
             };
-            finalAction = { ...action, payload: { id: listId, title: action.payload } };
+            finalAction = { ...action, payload: { id: listId, title: action.payload, version: 1 } };
+            
+            // Optimistic UI update
             dispatch(finalAction);
 
             try {
                 await saveList(newList);
-                scheduleSync({ type: 'ADD_LIST', payload: newList });
+                // Store base version for three-way merge
+                scheduleSync({ 
+                    type: 'ADD_LIST', 
+                    payload: newList,
+                    baseVersion: null // New item, no base
+                });
+                previousStateRef.current = null; // Clear on success
             } catch (e) {
                 console.error("Failed to save list", e);
+                // Revert on local save failure
+                if (previousStateRef.current) {
+                    dispatch({ 
+                        type: 'REVERT_OPTIMISTIC_UPDATE', 
+                        payload: { previousState: previousStateRef.current } 
+                    });
+                    previousStateRef.current = null;
+                }
             }
             return;
         }
@@ -110,53 +232,177 @@ export const BoardProvider = ({ children }) => {
                 list_id: columnId,
                 order_id: column ? column.cards.length : 0,
                 last_modified: Date.now(),
-                version: 1, // Init version
+                version: 1,
                 lastModifiedAt: Date.now(),
                 tags: []
             };
-            finalAction = { ...action, payload: { ...action.payload, id: cardId } };
+            finalAction = { ...action, payload: { ...action.payload, id: cardId, version: 1 } };
+            
+            // Optimistic UI update
             dispatch(finalAction);
 
             try {
                 await saveCard(newCard);
-                scheduleSync({ type: 'ADD_CARD', payload: newCard });
+                scheduleSync({ 
+                    type: 'ADD_CARD', 
+                    payload: newCard,
+                    baseVersion: null
+                });
+                previousStateRef.current = null;
             } catch (e) {
                 console.error("Failed to save card", e);
+                if (previousStateRef.current) {
+                    dispatch({ 
+                        type: 'REVERT_OPTIMISTIC_UPDATE', 
+                        payload: { previousState: previousStateRef.current } 
+                    });
+                    previousStateRef.current = null;
+                }
             }
             return;
         }
 
+        // For operations that are already dispatched, we need to track state before dispatch
+        // But since dispatch happens first, we track it before the switch
+        if (['MOVE_LIST', 'MOVE_CARD'].includes(action.type)) {
+            previousStateRef.current = JSON.parse(JSON.stringify(state));
+        }
+        
         dispatch(action);
 
         try {
             switch (action.type) {
                 case 'DELETE_CARD':
-                    await deleteCard(action.payload);
-                    scheduleSync({ type: 'DELETE_CARD', payload: action.payload });
+                    // Store card before deletion for revert
+                    const cardToDelete = state.columns
+                        .flatMap(col => col.cards)
+                        .find(c => c.id === action.payload);
+                    const baseCard = cardToDelete ? { ...cardToDelete } : null;
+                    
+                    // Optimistic UI update
+                    dispatch(action);
+                    
+                    try {
+                        await deleteCard(action.payload);
+                        scheduleSync({ 
+                            type: 'DELETE_CARD', 
+                            payload: action.payload,
+                            baseVersion: baseCard
+                        });
+                        previousStateRef.current = null;
+                    } catch (e) {
+                        console.error("Failed to delete card", e);
+                        if (previousStateRef.current) {
+                            dispatch({ 
+                                type: 'REVERT_OPTIMISTIC_UPDATE', 
+                                payload: { previousState: previousStateRef.current } 
+                            });
+                            previousStateRef.current = null;
+                        }
+                    }
                     break;
 
                 case 'UPDATE_CARD':
                     const col = state.columns.find(c => c.cards.some(card => card.id === action.payload.id));
                     const card = col?.cards.find(c => c.id === action.payload.id);
                     if (card) {
-                        const updatedCard = { ...card, ...action.payload.updates, last_modified: Date.now() };
+                        // Store base version for three-way merge
+                        const baseVersion = { ...card };
+                        const updatedCard = { 
+                            ...card, 
+                            ...action.payload.updates, 
+                            last_modified: Date.now(),
+                            lastModifiedAt: Date.now(),
+                            version: (card.version || 1) + 1
+                        };
+                        
+                        // Optimistic UI update with version
+                        dispatch({
+                            type: 'UPDATE_CARD',
+                            payload: {
+                                id: action.payload.id,
+                                updates: { 
+                                    ...action.payload.updates, 
+                                    version: updatedCard.version 
+                                }
+                            }
+                        });
+                        
                         await saveCard(updatedCard);
-                        scheduleSync({ type: 'UPDATE_CARD', payload: { id: action.payload.id, updates: action.payload.updates } });
+                        scheduleSync({
+                            type: 'UPDATE_CARD',
+                            payload: {
+                                id: action.payload.id,
+                                updates: { ...action.payload.updates, version: card.version }
+                            },
+                            baseVersion: baseVersion // Store base for three-way merge
+                        });
+                        previousStateRef.current = null;
                     }
                     break;
 
                 case 'EDIT_LIST_TITLE':
                     const list = state.columns.find(c => c.id === action.payload.id);
                     if (list) {
-                        const updatedList = { ...list, title: action.payload.title, last_modified: Date.now() };
+                        const baseVersion = { ...list };
+                        const updatedList = { 
+                            ...list, 
+                            title: action.payload.title, 
+                            last_modified: Date.now(),
+                            lastModifiedAt: Date.now(),
+                            version: (list.version || 1) + 1
+                        };
+                        
+                        // Optimistic UI update
+                        dispatch({
+                            type: 'EDIT_LIST_TITLE',
+                            payload: {
+                                id: action.payload.id,
+                                title: action.payload.title,
+                                version: updatedList.version
+                            }
+                        });
+                        
                         await saveList(updatedList);
-                        scheduleSync({ type: 'EDIT_LIST_TITLE', payload: { id: action.payload.id, title: action.payload.title } });
+                        scheduleSync({
+                            type: 'EDIT_LIST_TITLE',
+                            payload: {
+                                id: action.payload.id,
+                                title: action.payload.title,
+                                version: list.version
+                            },
+                            baseVersion: baseVersion
+                        });
+                        previousStateRef.current = null;
                     }
                     break;
 
                 case 'ARCHIVE_LIST':
-                    await deleteList(action.payload);
-                    scheduleSync({ type: 'ARCHIVE_LIST', payload: action.payload });
+                    // Store list before deletion for revert
+                    const listToArchive = state.columns.find(col => col.id === action.payload);
+                    const baseList = listToArchive ? { ...listToArchive } : null;
+                    
+                    // Optimistic UI update
+                    dispatch(action);
+                    
+                    try {
+                        await deleteList(action.payload);
+                        scheduleSync({ 
+                            type: 'ARCHIVE_LIST', 
+                            payload: action.payload,
+                            baseVersion: baseList
+                        });
+                        previousStateRef.current = null;
+                    } catch (e) {
+                        console.error("Failed to archive list", e);
+                        if (previousStateRef.current) {
+                            dispatch({ 
+                                type: 'REVERT_OPTIMISTIC_UPDATE', 
+                                payload: { previousState: previousStateRef.current } 
+                            });
+                            previousStateRef.current = null;
+                        }
+                    }
                     break;
 
                 case 'MOVE_LIST': {
@@ -176,9 +422,12 @@ export const BoardProvider = ({ children }) => {
                         }));
 
                         await updateListsOrder(updates);
-                        // Send the full reordered list payload (or minimal change)
-                        // API expects { lists: [{id, order}, ...] }
-                        scheduleSync({ type: 'MOVE_LIST', payload: { lists: updates.map(l => ({ id: l.id, order: l.order })) } });
+                        scheduleSync({ 
+                            type: 'MOVE_LIST', 
+                            payload: { lists: updates.map(l => ({ id: l.id, order: l.order })) },
+                            baseVersion: state.columns // Store previous column order
+                        });
+                        previousStateRef.current = null;
                     }
                     break;
                 }
@@ -221,7 +470,18 @@ export const BoardProvider = ({ children }) => {
 
                             await updateCardsOrder(cardsToUpdate);
 
-                            scheduleSync({ type: 'MOVE_CARD', payload: { cards: cardsToUpdate.map(c => ({ id: c.id, order_id: c.order_id, list_id: c.list_id })) } });
+                            // Store base state for three-way merge
+                            const baseCards = {
+                                source: [...sourceCol.cards],
+                                dest: sourceCol.id === destCol.id ? [] : [...destCol.cards]
+                            };
+                            
+                            scheduleSync({ 
+                                type: 'MOVE_CARD', 
+                                payload: { cards: cardsToUpdate.map(c => ({ id: c.id, order_id: c.order_id, list_id: c.list_id })) },
+                                baseVersion: baseCards
+                            });
+                            previousStateRef.current = null;
                         }
                     }
                     break;
@@ -240,8 +500,24 @@ export const BoardProvider = ({ children }) => {
         await updateCardsOrder(cards);
     };
 
+    const dismissError = useCallback((errorId) => {
+        setSyncErrors(prev => prev.filter(err => err.id !== errorId));
+    }, []);
+
     return (
-        <BoardContext.Provider value={{ state, dispatch: customDispatch, persistListOrder, persistCardOrder, isOnline, isSyncing, refreshBoard, conflicts, resolveConflict }}>
+        <BoardContext.Provider value={{ 
+            state, 
+            dispatch: customDispatch, 
+            persistListOrder, 
+            persistCardOrder, 
+            isOnline, 
+            isSyncing, 
+            refreshBoard, 
+            conflicts, 
+            resolveConflict,
+            syncErrors,
+            dismissError
+        }}>
             {children}
         </BoardContext.Provider>
     );

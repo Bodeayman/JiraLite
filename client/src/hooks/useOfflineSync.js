@@ -37,7 +37,6 @@ export const useOfflineSync = (options = {}) => {
                     break;
                 case 'UPDATE_LIST':
                 case 'EDIT_LIST_TITLE':
-                    // Map payload to update object if needed, or assume it's correctly formatted
                     await apiClient.updateList(operation.payload.id, { title: operation.payload.title, version: operation.payload.version });
                     break;
                 case 'DELETE_LIST':
@@ -70,11 +69,15 @@ export const useOfflineSync = (options = {}) => {
             return true; // Continue processing
 
         } catch (error) {
-            console.error("Sync failed for op:", operation.type, error);
-
-            // 1. Network Error -> Stop
-            if (error.message === 'NETWORK_ERROR') {
+            // 1. Network Error -> Stop silently (app works offline)
+            if (error.message === 'NETWORK_ERROR' || error.isOffline) {
+                // Silently fail - app works completely offline with local data
                 return false;
+            }
+
+            // Only log non-network errors
+            if (process.env.NODE_ENV === 'development') {
+                console.error("Sync failed for op:", operation.type, error);
             }
 
             // 2. Conflict (409) -> Auto-Merge or Pause for User
@@ -95,7 +98,9 @@ export const useOfflineSync = (options = {}) => {
                         localItem = { ...operation.payload };
                     }
 
-                    const merged = mergeItems(null, localItem, serverItem);
+                    // Use baseVersion from operation for proper three-way merge
+                    const baseVersion = operation.baseVersion || null;
+                    const merged = mergeItems(baseVersion, localItem, serverItem);
 
                     if (merged) {
                         console.log("Auto-merged conflict for", operation.type);
@@ -144,7 +149,8 @@ export const useOfflineSync = (options = {}) => {
         setIsSyncing(true);
 
         try {
-            const queue = await getQueue();
+            const queueResponse = await getQueue();
+            const queue = Array.isArray(queueResponse) ? queueResponse : [];
             for (const entry of queue) {
                 const success = await processOperation(entry);
                 if (!success) break;
@@ -164,16 +170,19 @@ export const useOfflineSync = (options = {}) => {
     }, [processQueue]);
 
     const resolveConflict = useCallback(async (conflictId, resolution, serverItem) => {
-        // conflictId is the queue key
-        // resolution: 'local' | 'server'
+        console.log(`Resolving conflict ${conflictId} with ${resolution}`, serverItem);
 
-        // 1. Fetch the queued operation
         const queue = await getQueue();
-        const entry = queue.find(q => q.key === conflictId);
+        // Use loose equality and handle potential string/number mismatch for conflictId
+        const entry = queue.find(q => q.key == conflictId);
 
-        if (!entry) return; // Already gone?
+        if (!entry) {
+            console.warn(`Conflict item ${conflictId} not found in queue.`);
+            return;
+        }
 
         const { val: operation } = entry;
+        console.log(`Found operation in queue: ${operation.type}`);
 
         if (resolution === 'server') {
             // "Keep Theirs": Update local DB to match server, remove from queue
@@ -183,21 +192,22 @@ export const useOfflineSync = (options = {}) => {
             }
             await removeFromQueue(conflictId);
         } else {
-            // "Keep Mine": Force update. Update payload version to server version so it overwrites.
-            // We need to fetch current server version again? Or assume 'serverItem' passed in is fresh.
+            // "Keep Mine": Force update by using the server's current version
             if (serverItem) {
-                const newPayload = { ...operation.payload, version: serverItem.version };
-                // Update the queue item? Or just triggering processQueue will fail again if we don't update it?
-                // We MUST update the stored queue item.
-                // Since we don't have a specific updateQueue method, we remove and re-add? 
-                // Or we can assume processQueue will pick it up if we just modify it? No, need IDB write.
-                // Solution: We'll implement a fast "retry with skip" or just update storage.js to allow update.
-                // For this assignment, "Keep Mine" -> Update Local DB (already done), Remove from Queue? No, we want to push to server.
-                // We verify we want to OVERWRITE server.
-                // We need to re-queue with updated version.
+                const newPayload = { ...operation.payload };
+
+                // Handle different payload structures
+                if (newPayload.updates) {
+                    // It's a card update
+                    newPayload.updates.version = serverItem.version;
+                } else {
+                    // It's a list title update or other direct payload
+                    newPayload.version = serverItem.version;
+                }
+
                 await removeFromQueue(conflictId);
-                // Re-queue with new version
-                addToQueue({ ...operation, payload: newPayload });
+                // Re-queue with new version so the next sync attempt succeeds
+                await addToQueue({ ...operation, payload: newPayload });
             }
         }
 

@@ -1,11 +1,14 @@
 const DB_NAME = 'JiraLiteDB';
-const DB_VERSION = 3; // Incremented to 3 to force 'queue' creation if missed
+const DB_VERSION = 3;
 const STORES = {
     LISTS: 'lists',
     CARDS: 'cards',
     TAGS: 'tags',
     QUEUE: 'queue'
 };
+
+// JSON Backup Key for localStorage
+const JSON_BACKUP_KEY = 'jiralite_board_backup';
 
 const openDB = () => {
     return new Promise((resolve, reject) => {
@@ -56,16 +59,37 @@ const getAllFromStore = (db, storeName) => {
     });
 };
 
-export const loadBoard = async () => {
-    const db = await openDB();
+// Save board data to JSON backup in localStorage
+const saveJSONBackup = (data) => {
+    try {
+        const jsonData = JSON.stringify(data);
+        localStorage.setItem(JSON_BACKUP_KEY, jsonData);
+    } catch (error) {
+        console.error('Failed to save JSON backup:', error);
+    }
+};
 
+// Load board data from JSON backup in localStorage
+const loadJSONBackup = () => {
+    try {
+        const jsonData = localStorage.getItem(JSON_BACKUP_KEY);
+        if (jsonData) {
+            const data = JSON.parse(jsonData);
+            return data;
+        }
+    } catch (error) {
+        console.error('Failed to load JSON backup:', error);
+    }
+    return null;
+};
+
+// Helper function to build board data from IndexedDB without circular dependency
+const buildBoardDataFromDB = async (db) => {
     const lists = await getAllFromStore(db, STORES.LISTS);
     const cards = await getAllFromStore(db, STORES.CARDS);
 
-    // Sort lists by order
     lists.sort((a, b) => a.order - b.order);
 
-    // Map cards to lists and sort by order_id
     const columns = lists.map(list => {
         const listCards = cards
             .filter(card => card.list_id === list.id)
@@ -81,11 +105,75 @@ export const loadBoard = async () => {
     return { columns };
 };
 
+// Update JSON backup after any storage operation
+const updateJSONBackup = async () => {
+    try {
+        const db = await openDB();
+        const boardData = await buildBoardDataFromDB(db);
+        saveJSONBackup(boardData);
+    } catch (error) {
+        console.error('Failed to update JSON backup:', error);
+    }
+};
+
+export const loadBoard = async () => {
+    try {
+        const db = await openDB();
+        const boardData = await buildBoardDataFromDB(db);
+
+        // If IndexedDB is empty, try loading from JSON backup
+        if (boardData.columns.length === 0) {
+            const backupData = loadJSONBackup();
+            if (backupData && backupData.columns && backupData.columns.length > 0) {
+                console.log('Restoring from JSON backup...');
+                // Restore to IndexedDB
+                for (const column of backupData.columns) {
+                    const { cards: columnCards, ...listData } = column;
+                    const listTx = db.transaction(STORES.LISTS, 'readwrite');
+                    listTx.objectStore(STORES.LISTS).put(listData);
+                    await new Promise((resolve, reject) => {
+                        listTx.oncomplete = () => resolve();
+                        listTx.onerror = () => reject(listTx.error);
+                    });
+
+                    for (const card of columnCards) {
+                        const cardTx = db.transaction(STORES.CARDS, 'readwrite');
+                        cardTx.objectStore(STORES.CARDS).put(card);
+                        await new Promise((resolve, reject) => {
+                            cardTx.oncomplete = () => resolve();
+                            cardTx.onerror = () => reject(cardTx.error);
+                        });
+                    }
+                }
+                // Reload after restoration
+                return await buildBoardDataFromDB(await openDB());
+            }
+        }
+
+        // Always update JSON backup when loading
+        saveJSONBackup(boardData);
+
+        return boardData;
+    } catch (error) {
+        console.error('Failed to load from IndexedDB, trying JSON backup:', error);
+        // Fallback to JSON backup if IndexedDB fails
+        const backupData = loadJSONBackup();
+        if (backupData) {
+            return backupData;
+        }
+        return { columns: [] };
+    }
+};
+
 export const saveList = async (list) => {
     const db = await openDB();
     return new Promise((resolve, reject) => {
         const request = getStore(db, STORES.LISTS, 'readwrite').put(list);
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = async () => {
+            // Update JSON backup after saving
+            await updateJSONBackup();
+            resolve(request.result);
+        };
         request.onerror = () => reject(request.error);
     });
 };
@@ -94,7 +182,11 @@ export const saveCard = async (card) => {
     const db = await openDB();
     return new Promise((resolve, reject) => {
         const request = getStore(db, STORES.CARDS, 'readwrite').put(card);
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = async () => {
+            // Update JSON backup after saving
+            await updateJSONBackup();
+            resolve(request.result);
+        };
         request.onerror = () => reject(request.error);
     });
 };
@@ -103,7 +195,11 @@ export const deleteCard = async (id) => {
     const db = await openDB();
     return new Promise((resolve, reject) => {
         const request = getStore(db, STORES.CARDS, 'readwrite').delete(id);
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = async () => {
+            // Update JSON backup after deleting
+            await updateJSONBackup();
+            resolve(request.result);
+        };
         request.onerror = () => reject(request.error);
     });
 };
@@ -112,7 +208,11 @@ export const deleteList = async (id) => {
     const db = await openDB();
     return new Promise((resolve, reject) => {
         const request = getStore(db, STORES.LISTS, 'readwrite').delete(id);
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = async () => {
+            // Update JSON backup after deleting
+            await updateJSONBackup();
+            resolve(request.result);
+        };
         request.onerror = () => reject(request.error);
     });
 };
@@ -125,7 +225,12 @@ export const updateListsOrder = async (lists) => {
         tx.objectStore(STORES.LISTS).put(list);
     });
     return new Promise((resolve, reject) => {
-        tx.oncomplete = () => resolve();
+        tx.oncomplete = async () => {
+            // Update JSON backup after reordering
+            const boardData = await loadBoard();
+            saveJSONBackup(boardData);
+            resolve();
+        };
         tx.onerror = () => reject(tx.error);
     });
 };
@@ -137,7 +242,12 @@ export const updateCardsOrder = async (cards) => {
         tx.objectStore(STORES.CARDS).put(card);
     });
     return new Promise((resolve, reject) => {
-        tx.oncomplete = () => resolve();
+        tx.oncomplete = async () => {
+            // Update JSON backup after reordering
+            const boardData = await loadBoard();
+            saveJSONBackup(boardData);
+            resolve();
+        };
         tx.onerror = () => reject(tx.error);
     });
 };
@@ -192,4 +302,70 @@ export const clearQueue = async () => {
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
     });
+};
+
+// Export board data as JSON string
+export const exportBoardAsJSON = async () => {
+    const boardData = await loadBoard();
+    return JSON.stringify(boardData, null, 2);
+};
+
+// Import board data from JSON string
+export const importBoardFromJSON = async (jsonString) => {
+    try {
+        const boardData = JSON.parse(jsonString);
+        if (!boardData || !boardData.columns || !Array.isArray(boardData.columns)) {
+            throw new Error('Invalid board data format');
+        }
+
+        // Clear existing data
+        const db = await openDB();
+
+        // Clear lists
+        const listsTx = db.transaction(STORES.LISTS, 'readwrite');
+        await new Promise((resolve, reject) => {
+            listsTx.objectStore(STORES.LISTS).clear();
+            listsTx.oncomplete = () => resolve();
+            listsTx.onerror = () => reject(listsTx.error);
+        });
+
+        // Clear cards
+        const cardsTx = db.transaction(STORES.CARDS, 'readwrite');
+        await new Promise((resolve, reject) => {
+            cardsTx.objectStore(STORES.CARDS).clear();
+            cardsTx.oncomplete = () => resolve();
+            cardsTx.onerror = () => reject(cardsTx.error);
+        });
+
+        // Import new data
+        for (const column of boardData.columns) {
+            const { cards: columnCards, ...listData } = column;
+            await saveList(listData);
+            for (const card of columnCards) {
+                await saveCard(card);
+            }
+        }
+
+        // Update JSON backup
+        saveJSONBackup(boardData);
+
+        return boardData;
+    } catch (error) {
+        console.error('Failed to import board from JSON:', error);
+        throw error;
+    }
+};
+
+// Download board as JSON file
+export const downloadBoardAsJSON = async () => {
+    const jsonString = await exportBoardAsJSON();
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `jiralite-board-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 };

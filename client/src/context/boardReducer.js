@@ -42,6 +42,8 @@ export const boardReducer = (state, action) => {
                 archived: false,
                 order: state.columns.length,
                 last_modified: Date.now(),
+                lastModifiedAt: Date.now(),
+                version: action.payload.version || 1,
                 cards: []
             };
             return {
@@ -61,6 +63,8 @@ export const boardReducer = (state, action) => {
                             list_id: col.id,
                             order_id: col.cards.length,
                             last_modified: Date.now(),
+                            lastModifiedAt: Date.now(),
+                            version: action.payload.version || 1,
                             tags: []
                         };
                         return {
@@ -88,7 +92,13 @@ export const boardReducer = (state, action) => {
                     ...col,
                     cards: col.cards.map(card =>
                         card.id === action.payload.id
-                            ? { ...card, ...action.payload.updates, last_modified: Date.now() }
+                            ? { 
+                                ...card, 
+                                ...action.payload.updates, 
+                                last_modified: Date.now(),
+                                lastModifiedAt: Date.now(),
+                                version: action.payload.updates.version || card.version
+                            }
                             : card
                     )
                 }))
@@ -98,7 +108,15 @@ export const boardReducer = (state, action) => {
             return {
                 ...state,
                 columns: state.columns.map(col =>
-                    col.id === action.payload.id ? { ...col, title: action.payload.title, last_modified: Date.now() } : col
+                    col.id === action.payload.id 
+                        ? { 
+                            ...col, 
+                            title: action.payload.title, 
+                            last_modified: Date.now(),
+                            lastModifiedAt: Date.now(),
+                            version: action.payload.version || col.version
+                        } 
+                        : col
                 )
             };
 
@@ -194,6 +212,10 @@ export const boardReducer = (state, action) => {
                 columns: newColumns
             };
         }
+
+        case 'REVERT_OPTIMISTIC_UPDATE':
+            // Revert to previous state on sync failure
+            return action.payload.previousState;
 
         default:
             return state;

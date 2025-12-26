@@ -12,26 +12,8 @@ import { useBoardState } from '../hooks/useBoardState';
 // Note: useUndoRedo is available but requires state management refactoring to integrate fully
 // import { useUndoRedo } from '../hooks/useUndoRedo';
 
-// Lazy-load the heavy CardDetailModal component for code splitting
-// Add artificial delay to simulate slow network (for demonstration purposes)
-// Set SIMULATE_SLOW_LOADING to true to see the Suspense fallback
-const SIMULATE_SLOW_LOADING = true; // Change to false to disable simulation
-const DELAY_MS = 1000; // 1 seconds delay
-// Lazy loading for the component don't need it right now
-const CardDetailModal = lazy(() => {
-    const importPromise = import('./CardDetailModal');
+import CardDetailModal from './CardDetailModal';
 
-    if (SIMULATE_SLOW_LOADING) {
-        // Add artificial delay to simulate slow network
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                resolve(importPromise);
-            }, DELAY_MS);
-        });
-    }
-
-    return importPromise;
-});
 
 import {
     DndContext,
