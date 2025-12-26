@@ -1,5 +1,6 @@
 import { apiClient } from './apiClient';
 
+/* global fetch */
 global.fetch = jest.fn();
 
 describe('apiClient', () => {

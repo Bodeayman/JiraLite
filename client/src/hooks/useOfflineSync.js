@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { addToQueue, getQueue, removeFromQueue, saveList, saveCard, deleteCard, deleteList } from '../services/storage';
+import { addToQueue, getQueue, removeFromQueue, saveList, saveCard } from '../services/storage';
 import { apiClient } from '../services/apiClient';
 import { mergeItems } from '../utils/merge';
 
@@ -25,6 +25,7 @@ export const useOfflineSync = (options = {}) => {
         return () => {
             if (interval) clearInterval(interval);
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [syncInterval]);
 
     const processOperation = async (entry) => {
@@ -76,7 +77,7 @@ export const useOfflineSync = (options = {}) => {
             }
 
             // Only log non-network errors
-            if (process.env.NODE_ENV === 'development') {
+            if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') {
                 console.error("Sync failed for op:", operation.type, error);
             }
 
@@ -167,6 +168,7 @@ export const useOfflineSync = (options = {}) => {
                 processQueue();
             }
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [processQueue]);
 
     const resolveConflict = useCallback(async (conflictId, resolution, serverItem) => {

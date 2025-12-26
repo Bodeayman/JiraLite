@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 
 export const initialState = {
     columns: [],
@@ -35,7 +34,7 @@ export const boardReducer = (state, action) => {
                 }
             };
 
-        case 'ADD_LIST':
+        case 'ADD_LIST': {
             const newList = {
                 id: action.payload.id,
                 title: action.payload.title,
@@ -50,6 +49,7 @@ export const boardReducer = (state, action) => {
                 ...state,
                 columns: [...state.columns, newList]
             };
+        }
 
         case 'ADD_CARD':
             return {
@@ -92,9 +92,9 @@ export const boardReducer = (state, action) => {
                     ...col,
                     cards: col.cards.map(card =>
                         card.id === action.payload.id
-                            ? { 
-                                ...card, 
-                                ...action.payload.updates, 
+                            ? {
+                                ...card,
+                                ...action.payload.updates,
                                 last_modified: Date.now(),
                                 lastModifiedAt: Date.now(),
                                 version: action.payload.updates.version || card.version
@@ -108,14 +108,14 @@ export const boardReducer = (state, action) => {
             return {
                 ...state,
                 columns: state.columns.map(col =>
-                    col.id === action.payload.id 
-                        ? { 
-                            ...col, 
-                            title: action.payload.title, 
+                    col.id === action.payload.id
+                        ? {
+                            ...col,
+                            title: action.payload.title,
                             last_modified: Date.now(),
                             lastModifiedAt: Date.now(),
                             version: action.payload.version || col.version
-                        } 
+                        }
                         : col
                 )
             };

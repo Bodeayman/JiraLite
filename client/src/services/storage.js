@@ -23,9 +23,8 @@ const openDB = () => {
             console.warn("IDB Upgrade Blocked. Please close other tabs of this app.");
         };
 
-        request.onupgradeneeded = (event) => {
-            console.log("IDB Upgrading from ", event.oldVersion, "to", event.newVersion);
-            const db = event.target.result;
+        request.onupgradeneeded = (_event) => {
+            const db = request.result;
             if (!db.objectStoreNames.contains(STORES.LISTS)) {
                 db.createObjectStore(STORES.LISTS, { keyPath: 'id' });
             }

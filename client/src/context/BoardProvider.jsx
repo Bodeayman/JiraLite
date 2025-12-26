@@ -13,6 +13,92 @@ export const BoardProvider = ({ children }) => {
     const [syncErrors, setSyncErrors] = useState([]);
     const previousStateRef = useRef(null);
 
+    const refreshBoard = useCallback(async () => {
+        try {
+            const serverData = await apiClient.getBoard();
+            // Only update if server has actual data (non-empty)
+            // Never overwrite local data with empty server data
+            if (serverData && serverData.columns && Array.isArray(serverData.columns) && serverData.columns.length > 0) {
+                // Server has data - merge with local (server wins for conflicts)
+                const currentLocalData = await loadBoard();
+
+                // If local has data and server has data, merge them intelligently
+                if (currentLocalData.columns.length > 0) {
+                    // Merge: keep local items that don't exist on server, update items that exist on both
+                    const mergedColumns = [...currentLocalData.columns];
+
+                    // Update existing columns from server
+                    serverData.columns.forEach(serverCol => {
+                        const localIndex = mergedColumns.findIndex(col => col.id === serverCol.id);
+                        if (localIndex >= 0) {
+                            // Merge cards: keep local cards not on server, update cards that exist on both
+                            const localCol = mergedColumns[localIndex];
+                            const mergedCards = [...localCol.cards];
+
+                            // Update existing cards from server
+                            serverCol.cards.forEach(serverCard => {
+                                const localCardIndex = mergedCards.findIndex(card => card.id === serverCard.id);
+                                if (localCardIndex >= 0) {
+                                    // Server version wins for existing cards
+                                    mergedCards[localCardIndex] = serverCard;
+                                } else {
+                                    // Add new cards from server
+                                    mergedCards.push(serverCard);
+                                }
+                            });
+
+                            // Update column with merged cards
+                            mergedColumns[localIndex] = {
+                                ...serverCol,
+                                cards: mergedCards.sort((a, b) => (a.order_id || 0) - (b.order_id || 0))
+                            };
+                        } else {
+                            // Add new columns from server
+                            mergedColumns.push(serverCol);
+                        }
+                    });
+
+                    // Sort by order
+                    mergedColumns.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+                    dispatch({ type: 'INIT_BOARD', payload: { columns: mergedColumns } });
+
+                    // Save merged data to local storage
+                    for (const column of mergedColumns) {
+                        const { cards, ...listData } = column;
+                        await saveList(listData);
+                        for (const card of cards) {
+                            await saveCard(card);
+                        }
+                    }
+                } else {
+                    // Local is empty, use server data
+                    dispatch({ type: 'INIT_BOARD', payload: serverData });
+
+                    // Save server data to local storage
+                    for (const column of serverData.columns) {
+                        const { cards, ...listData } = column;
+                        await saveList(listData);
+                        for (const card of cards) {
+                            await saveCard(card);
+                        }
+                    }
+                }
+            } else {
+                // Server returned empty data - keep local data, don't overwrite
+                if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') {
+                    console.log("Server returned empty data, preserving local data");
+                }
+            }
+        } catch (e) {
+            // Silently fail - app works completely offline with local data
+            // Only log in development mode
+            if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') {
+                console.log("Server unavailable, using local data (offline mode)");
+            }
+        }
+    }, []);
+
     const { scheduleSync, isOnline, isSyncing, resolveConflict: syncResolve } = useOfflineSync({
         onSyncError: (error, operation) => {
             // Network errors are handled silently (offline mode)
@@ -22,9 +108,9 @@ export const BoardProvider = ({ children }) => {
 
             // For non-network errors, revert optimistic update and show error
             if (previousStateRef.current) {
-                dispatch({ 
-                    type: 'REVERT_OPTIMISTIC_UPDATE', 
-                    payload: { previousState: previousStateRef.current } 
+                dispatch({
+                    type: 'REVERT_OPTIMISTIC_UPDATE',
+                    payload: { previousState: previousStateRef.current }
                 });
                 previousStateRef.current = null;
             }
@@ -87,93 +173,6 @@ export const BoardProvider = ({ children }) => {
         load();
     }, []);
 
-    const refreshBoard = async () => {
-        try {
-            const serverData = await apiClient.getBoard();
-            // Only update if server has actual data (non-empty)
-            // Never overwrite local data with empty server data
-            if (serverData && serverData.columns && Array.isArray(serverData.columns) && serverData.columns.length > 0) {
-                // Server has data - merge with local (server wins for conflicts)
-                const currentLocalData = await loadBoard();
-                
-                // If local has data and server has data, merge them intelligently
-                if (currentLocalData.columns.length > 0) {
-                    // Merge: keep local items that don't exist on server, update items that exist on both
-                    const mergedColumns = [...currentLocalData.columns];
-                    const serverColumnIds = new Set(serverData.columns.map(col => col.id));
-                    
-                    // Update existing columns from server
-                    serverData.columns.forEach(serverCol => {
-                        const localIndex = mergedColumns.findIndex(col => col.id === serverCol.id);
-                        if (localIndex >= 0) {
-                            // Merge cards: keep local cards not on server, update cards that exist on both
-                            const localCol = mergedColumns[localIndex];
-                            const serverCardIds = new Set(serverCol.cards.map(card => card.id));
-                            const mergedCards = [...localCol.cards];
-                            
-                            // Update existing cards from server
-                            serverCol.cards.forEach(serverCard => {
-                                const localCardIndex = mergedCards.findIndex(card => card.id === serverCard.id);
-                                if (localCardIndex >= 0) {
-                                    // Server version wins for existing cards
-                                    mergedCards[localCardIndex] = serverCard;
-                                } else {
-                                    // Add new cards from server
-                                    mergedCards.push(serverCard);
-                                }
-                            });
-                            
-                            // Update column with merged cards
-                            mergedColumns[localIndex] = {
-                                ...serverCol,
-                                cards: mergedCards.sort((a, b) => (a.order_id || 0) - (b.order_id || 0))
-                            };
-                        } else {
-                            // Add new columns from server
-                            mergedColumns.push(serverCol);
-                        }
-                    });
-                    
-                    // Sort by order
-                    mergedColumns.sort((a, b) => (a.order || 0) - (b.order || 0));
-                    
-                    dispatch({ type: 'INIT_BOARD', payload: { columns: mergedColumns } });
-                    
-                    // Save merged data to local storage
-                    for (const column of mergedColumns) {
-                        const { cards, ...listData } = column;
-                        await saveList(listData);
-                        for (const card of cards) {
-                            await saveCard(card);
-                        }
-                    }
-                } else {
-                    // Local is empty, use server data
-                    dispatch({ type: 'INIT_BOARD', payload: serverData });
-                    
-                    // Save server data to local storage
-                    for (const column of serverData.columns) {
-                        const { cards, ...listData } = column;
-                        await saveList(listData);
-                        for (const card of cards) {
-                            await saveCard(card);
-                        }
-                    }
-                }
-            } else {
-                // Server returned empty data - keep local data, don't overwrite
-                if (process.env.NODE_ENV === 'development') {
-                    console.log("Server returned empty data, preserving local data");
-                }
-            }
-        } catch (e) {
-            // Silently fail - app works completely offline with local data
-            // Only log in development mode
-            if (process.env.NODE_ENV === 'development') {
-                console.log("Server unavailable, using local data (offline mode)");
-            }
-        }
-    };
 
     const customDispatch = async (action) => {
         let finalAction = action;
@@ -194,15 +193,15 @@ export const BoardProvider = ({ children }) => {
                 cards: []
             };
             finalAction = { ...action, payload: { id: listId, title: action.payload, version: 1 } };
-            
+
             // Optimistic UI update
             dispatch(finalAction);
 
             try {
                 await saveList(newList);
                 // Store base version for three-way merge
-                scheduleSync({ 
-                    type: 'ADD_LIST', 
+                scheduleSync({
+                    type: 'ADD_LIST',
                     payload: newList,
                     baseVersion: null // New item, no base
                 });
@@ -211,9 +210,9 @@ export const BoardProvider = ({ children }) => {
                 console.error("Failed to save list", e);
                 // Revert on local save failure
                 if (previousStateRef.current) {
-                    dispatch({ 
-                        type: 'REVERT_OPTIMISTIC_UPDATE', 
-                        payload: { previousState: previousStateRef.current } 
+                    dispatch({
+                        type: 'REVERT_OPTIMISTIC_UPDATE',
+                        payload: { previousState: previousStateRef.current }
                     });
                     previousStateRef.current = null;
                 }
@@ -237,14 +236,14 @@ export const BoardProvider = ({ children }) => {
                 tags: []
             };
             finalAction = { ...action, payload: { ...action.payload, id: cardId, version: 1 } };
-            
+
             // Optimistic UI update
             dispatch(finalAction);
 
             try {
                 await saveCard(newCard);
-                scheduleSync({ 
-                    type: 'ADD_CARD', 
+                scheduleSync({
+                    type: 'ADD_CARD',
                     payload: newCard,
                     baseVersion: null
                 });
@@ -252,9 +251,9 @@ export const BoardProvider = ({ children }) => {
             } catch (e) {
                 console.error("Failed to save card", e);
                 if (previousStateRef.current) {
-                    dispatch({ 
-                        type: 'REVERT_OPTIMISTIC_UPDATE', 
-                        payload: { previousState: previousStateRef.current } 
+                    dispatch({
+                        type: 'REVERT_OPTIMISTIC_UPDATE',
+                        payload: { previousState: previousStateRef.current }
                     });
                     previousStateRef.current = null;
                 }
@@ -267,25 +266,25 @@ export const BoardProvider = ({ children }) => {
         if (['MOVE_LIST', 'MOVE_CARD'].includes(action.type)) {
             previousStateRef.current = JSON.parse(JSON.stringify(state));
         }
-        
+
         dispatch(action);
 
         try {
             switch (action.type) {
-                case 'DELETE_CARD':
+                case 'DELETE_CARD': {
                     // Store card before deletion for revert
                     const cardToDelete = state.columns
                         .flatMap(col => col.cards)
                         .find(c => c.id === action.payload);
                     const baseCard = cardToDelete ? { ...cardToDelete } : null;
-                    
+
                     // Optimistic UI update
                     dispatch(action);
-                    
+
                     try {
                         await deleteCard(action.payload);
-                        scheduleSync({ 
-                            type: 'DELETE_CARD', 
+                        scheduleSync({
+                            type: 'DELETE_CARD',
                             payload: action.payload,
                             baseVersion: baseCard
                         });
@@ -293,41 +292,41 @@ export const BoardProvider = ({ children }) => {
                     } catch (e) {
                         console.error("Failed to delete card", e);
                         if (previousStateRef.current) {
-                            dispatch({ 
-                                type: 'REVERT_OPTIMISTIC_UPDATE', 
-                                payload: { previousState: previousStateRef.current } 
+                            dispatch({
+                                type: 'REVERT_OPTIMISTIC_UPDATE',
+                                payload: { previousState: previousStateRef.current }
                             });
                             previousStateRef.current = null;
                         }
                     }
                     break;
-
-                case 'UPDATE_CARD':
+                }
+                case 'UPDATE_CARD': {
                     const col = state.columns.find(c => c.cards.some(card => card.id === action.payload.id));
                     const card = col?.cards.find(c => c.id === action.payload.id);
                     if (card) {
                         // Store base version for three-way merge
                         const baseVersion = { ...card };
-                        const updatedCard = { 
-                            ...card, 
-                            ...action.payload.updates, 
+                        const updatedCard = {
+                            ...card,
+                            ...action.payload.updates,
                             last_modified: Date.now(),
                             lastModifiedAt: Date.now(),
                             version: (card.version || 1) + 1
                         };
-                        
+
                         // Optimistic UI update with version
                         dispatch({
                             type: 'UPDATE_CARD',
                             payload: {
                                 id: action.payload.id,
-                                updates: { 
-                                    ...action.payload.updates, 
-                                    version: updatedCard.version 
+                                updates: {
+                                    ...action.payload.updates,
+                                    version: updatedCard.version
                                 }
                             }
                         });
-                        
+
                         await saveCard(updatedCard);
                         scheduleSync({
                             type: 'UPDATE_CARD',
@@ -340,19 +339,20 @@ export const BoardProvider = ({ children }) => {
                         previousStateRef.current = null;
                     }
                     break;
+                }
 
-                case 'EDIT_LIST_TITLE':
+                case 'EDIT_LIST_TITLE': {
                     const list = state.columns.find(c => c.id === action.payload.id);
                     if (list) {
                         const baseVersion = { ...list };
-                        const updatedList = { 
-                            ...list, 
-                            title: action.payload.title, 
+                        const updatedList = {
+                            ...list,
+                            title: action.payload.title,
                             last_modified: Date.now(),
                             lastModifiedAt: Date.now(),
                             version: (list.version || 1) + 1
                         };
-                        
+
                         // Optimistic UI update
                         dispatch({
                             type: 'EDIT_LIST_TITLE',
@@ -362,7 +362,7 @@ export const BoardProvider = ({ children }) => {
                                 version: updatedList.version
                             }
                         });
-                        
+
                         await saveList(updatedList);
                         scheduleSync({
                             type: 'EDIT_LIST_TITLE',
@@ -376,19 +376,20 @@ export const BoardProvider = ({ children }) => {
                         previousStateRef.current = null;
                     }
                     break;
+                }
 
-                case 'ARCHIVE_LIST':
+                case 'ARCHIVE_LIST': {
                     // Store list before deletion for revert
                     const listToArchive = state.columns.find(col => col.id === action.payload);
                     const baseList = listToArchive ? { ...listToArchive } : null;
-                    
+
                     // Optimistic UI update
                     dispatch(action);
-                    
+
                     try {
                         await deleteList(action.payload);
-                        scheduleSync({ 
-                            type: 'ARCHIVE_LIST', 
+                        scheduleSync({
+                            type: 'ARCHIVE_LIST',
                             payload: action.payload,
                             baseVersion: baseList
                         });
@@ -396,14 +397,15 @@ export const BoardProvider = ({ children }) => {
                     } catch (e) {
                         console.error("Failed to archive list", e);
                         if (previousStateRef.current) {
-                            dispatch({ 
-                                type: 'REVERT_OPTIMISTIC_UPDATE', 
-                                payload: { previousState: previousStateRef.current } 
+                            dispatch({
+                                type: 'REVERT_OPTIMISTIC_UPDATE',
+                                payload: { previousState: previousStateRef.current }
                             });
                             previousStateRef.current = null;
                         }
                     }
                     break;
+                }
 
                 case 'MOVE_LIST': {
                     const { activeId, overId } = action.payload;
@@ -422,8 +424,8 @@ export const BoardProvider = ({ children }) => {
                         }));
 
                         await updateListsOrder(updates);
-                        scheduleSync({ 
-                            type: 'MOVE_LIST', 
+                        scheduleSync({
+                            type: 'MOVE_LIST',
                             payload: { lists: updates.map(l => ({ id: l.id, order: l.order })) },
                             baseVersion: state.columns // Store previous column order
                         });
@@ -475,9 +477,9 @@ export const BoardProvider = ({ children }) => {
                                 source: [...sourceCol.cards],
                                 dest: sourceCol.id === destCol.id ? [] : [...destCol.cards]
                             };
-                            
-                            scheduleSync({ 
-                                type: 'MOVE_CARD', 
+
+                            scheduleSync({
+                                type: 'MOVE_CARD',
                                 payload: { cards: cardsToUpdate.map(c => ({ id: c.id, order_id: c.order_id, list_id: c.list_id })) },
                                 baseVersion: baseCards
                             });
@@ -505,15 +507,15 @@ export const BoardProvider = ({ children }) => {
     }, []);
 
     return (
-        <BoardContext.Provider value={{ 
-            state, 
-            dispatch: customDispatch, 
-            persistListOrder, 
-            persistCardOrder, 
-            isOnline, 
-            isSyncing, 
-            refreshBoard, 
-            conflicts, 
+        <BoardContext.Provider value={{
+            state,
+            dispatch: customDispatch,
+            persistListOrder,
+            persistCardOrder,
+            isOnline,
+            isSyncing,
+            refreshBoard,
+            conflicts,
             resolveConflict,
             syncErrors,
             dismissError

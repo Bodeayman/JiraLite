@@ -9,20 +9,22 @@ const request = async (endpoint, options = {}) => {
     const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     try {
-        const response = await fetch(url, { 
-            ...options, 
+        const response = await fetch(url, {
+            ...options,
             headers,
             signal: controller.signal
         });
         clearTimeout(timeoutId);
-        
+
         if (!response.ok) {
             const error = new Error(`API Error ${response.status}`);
             error.status = response.status;
             try {
                 const data = await response.json();
                 error.serverItem = data.serverItem || data;
-            } catch (e) { }
+            } catch (_e) {
+                // Ignore JSON parse errors
+            }
             throw error;
         }
         return await response.json();

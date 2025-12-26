@@ -11,9 +11,11 @@ const CardDetailModal = memo(({ card, onClose, onDelete, onUpdate }) => {
 
     // Update local state when card prop changes
     useEffect(() => {
-        setTitle(card.title);
-        setDescription(card.description || '');
-        setTags(card.tags || []);
+        if (card) {
+            setTitle(card.title);
+            setDescription(card.description || '');
+            setTags(card.tags || []);
+        }
     }, [card]);
 
     /* =========================
@@ -101,20 +103,35 @@ const CardDetailModal = memo(({ card, onClose, onDelete, onUpdate }) => {
         }
     }, [removeTag]);
 
+    const handleBackdropClick = useCallback((e) => {
+        if (e.target === e.currentTarget) {
+            onClose();
+        }
+    }, [onClose]);
+
+    const handleBackdropKeyDown = useCallback((e) => {
+        if (e.key === 'Escape') {
+            onClose();
+        }
+    }, [onClose]);
+
     return (
         <div
             className="fixed inset-0 z-40 flex justify-center items-center p-4 bg-slate-900/20 backdrop-blur-sm animate-in fade-in duration-200"
             onPointerDown={e => e.stopPropagation()}
-            onClick={onClose}
+            onClick={handleBackdropClick}
+            onKeyDown={handleBackdropKeyDown}
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
         >
             <div
                 ref={modalRef}
-                role="dialog"
-                aria-modal="true"
                 aria-labelledby="modal-title"
                 aria-describedby="modal-description"
                 className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom-4 duration-300 border border-white/50"
                 onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
             >
                 {/* Header */}
                 <div className="p-6 border-b border-slate-100 flex justify-between items-start bg-slate-50/50 rounded-t-2xl">
