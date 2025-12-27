@@ -27,7 +27,7 @@ describe('useOfflineSync', () => {
         const { result } = renderHook(() => useOfflineSync());
 
         await act(async () => {
-            result.current.scheduleSync({ type: 'ADD_LIST', payload: {} });
+            await result.current.scheduleSync({ type: 'ADD_LIST', payload: {} });
         });
 
         expect(storage.addToQueue).toHaveBeenCalled();
@@ -36,39 +36,39 @@ describe('useOfflineSync', () => {
     });
 
     test('processes UPDATE_CARD operation', async () => {
-        storage.getQueue.mockResolvedValue([{ key: 1, val: { type: 'UPDATE_CARD', payload: { id: 'c1', updates: {} } } }]);
+        const operation = { type: 'UPDATE_CARD', payload: { id: 'c1', updates: {} } };
+        storage.getQueue.mockResolvedValue([{ key: 1, val: operation }]);
         apiClient.updateCard.mockResolvedValue({});
+        storage.removeFromQueue.mockResolvedValue();
 
         const { result } = renderHook(() => useOfflineSync());
 
         await act(async () => {
-            // Trigger internal processQueue via effect or re-render? 
-            // Better to trigger scheduleSync which calls processQueue
-            storage.addToQueue.mockResolvedValue(2);
-            result.current.scheduleSync({ type: 'TEST' });
+            await result.current.scheduleSync(operation);
         });
 
-        expect(apiClient.updateCard).toHaveBeenCalled();
+        expect(apiClient.updateCard).toHaveBeenCalledWith('c1', {});
+        expect(storage.removeFromQueue).toHaveBeenCalledWith(1);
     });
 
-    test('handles conflicts (409) and calls onConflict', async () => {
+    test('handles 409 conflicts and triggers onConflict', async () => {
         const onConflict = jest.fn();
         const serverItem = { id: '1', version: 2 };
         const operation = { type: 'UPDATE_CARD', payload: { id: '1', updates: { title: 'Mine' }, version: 1 } };
 
         storage.getQueue.mockResolvedValue([{ key: 1, val: operation }]);
         apiClient.updateCard.mockRejectedValue({ status: 409, serverItem });
+        storage.removeFromQueue.mockResolvedValue();
 
         renderHook(() => useOfflineSync({ onConflict }));
 
         await act(async () => {
-            // Wait for interval or trigger
             window.dispatchEvent(new Event('online'));
         });
 
         expect(onConflict).toHaveBeenCalledWith(expect.objectContaining({
             id: 1,
-            server: serverItem
+            server: serverItem,
         }));
     });
 
@@ -76,6 +76,8 @@ describe('useOfflineSync', () => {
         const operation = { type: 'UPDATE_CARD', payload: { id: '1' } };
         const serverItem = { id: '1', title: 'Server' };
         storage.getQueue.mockResolvedValue([{ key: 1, val: operation }]);
+        storage.removeFromQueue.mockResolvedValue();
+        storage.saveCard.mockResolvedValue();
 
         const { result } = renderHook(() => useOfflineSync());
 
@@ -87,10 +89,12 @@ describe('useOfflineSync', () => {
         expect(storage.removeFromQueue).toHaveBeenCalledWith(1);
     });
 
-    test('resolveConflict with "local" resolution', async () => {
+    test('resolveConflict with "local" resolution updates version and re-adds to queue', async () => {
         const operation = { type: 'UPDATE_CARD', payload: { id: '1', updates: { title: 'Mine' } } };
         const serverItem = { id: '1', version: 10 };
         storage.getQueue.mockResolvedValue([{ key: 1, val: operation }]);
+        storage.removeFromQueue.mockResolvedValue();
+        storage.addToQueue.mockResolvedValue();
 
         const { result } = renderHook(() => useOfflineSync());
 
@@ -103,5 +107,39 @@ describe('useOfflineSync', () => {
                 updates: expect.objectContaining({ version: 10 })
             })
         }));
+    });
+
+    test('processOperation stops on network error and retries later', async () => {
+        storage.getQueue.mockResolvedValue([{ key: 1, val: { type: 'ADD_LIST', payload: {} } }]);
+        apiClient.createList.mockRejectedValue({ message: 'NETWORK_ERROR', isOffline: true });
+
+        const { result } = renderHook(() => useOfflineSync());
+
+        await act(async () => {
+            await result.current.scheduleSync({ type: 'ADD_LIST', payload: {} });
+        });
+
+        // Should not remove from queue
+        expect(storage.removeFromQueue).not.toHaveBeenCalled();
+    });
+
+    test('handles multiple operations sequentially', async () => {
+        storage.getQueue.mockResolvedValue([
+            { key: 1, val: { type: 'ADD_LIST', payload: {} } },
+            { key: 2, val: { type: 'ADD_CARD', payload: {} } },
+        ]);
+        apiClient.createList.mockResolvedValue({});
+        apiClient.createCard.mockResolvedValue({});
+        storage.removeFromQueue.mockResolvedValue();
+
+        const { result } = renderHook(() => useOfflineSync());
+
+        await act(async () => {
+            await result.current.scheduleSync({ type: 'TEST', payload: {} });
+        });
+
+        expect(apiClient.createList).toHaveBeenCalled();
+        expect(apiClient.createCard).toHaveBeenCalled();
+        expect(storage.removeFromQueue).toHaveBeenCalledTimes(2);
     });
 });

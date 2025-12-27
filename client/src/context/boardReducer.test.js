@@ -15,18 +15,18 @@ describe('boardReducer', () => {
 
     test('ADD_LIST adds a new list', () => {
         const newList = { id: 'l2', title: 'List 2', cards: [] };
-        const action = { type: 'ADD_LIST', payload: newList };
+        const action = { type: 'ADD_LIST', payload: { id: newList.id, title: newList.title } };
         const state = boardReducer(initialState, action);
         expect(state.columns).toHaveLength(2);
-        expect(state.columns[1]).toEqual(newList);
+        expect(state.columns[1]).toMatchObject(newList);
     });
 
     test('ADD_CARD adds card to correct list', () => {
         const newCard = { id: 'c2', title: 'Card 2', list_id: 'l1' };
-        const action = { type: 'ADD_CARD', payload: { listId: 'l1', card: newCard } };
+        const action = { type: 'ADD_CARD', payload: { columnId: 'l1', id: newCard.id, title: newCard.title } };
         const state = boardReducer(initialState, action);
         expect(state.columns[0].cards).toHaveLength(2);
-        expect(state.columns[0].cards[1]).toEqual(newCard);
+        expect(state.columns[0].cards[1]).toMatchObject({ id: newCard.id, title: newCard.title });
     });
 
     test('UPDATE_CARD updates card properties', () => {
@@ -73,7 +73,7 @@ describe('boardReducer', () => {
         };
         const action = {
             type: 'MOVE_CARD',
-            payload: { activeId: 'c1', overId: 'l2', activeContainer: 'l1', overContainer: 'l2' }
+            payload: { activeId: 'c1', overId: null, activeColumnId: 'l1', overColumnId: 'l2' }
         };
         const state = boardReducer(complexState, action);
         expect(state.columns[0].cards).toHaveLength(0);

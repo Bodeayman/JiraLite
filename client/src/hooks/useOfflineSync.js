@@ -9,7 +9,6 @@ export const useOfflineSync = (options = {}) => {
     const [isSyncing, setIsSyncing] = useState(false);
     const processingRef = useRef(false);
 
-    // Initial load and Periodic Sync
     useEffect(() => {
         const checkQueue = async () => {
             if (navigator.onLine) {
@@ -25,11 +24,13 @@ export const useOfflineSync = (options = {}) => {
         return () => {
             if (interval) clearInterval(interval);
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [syncInterval]);
 
     const processOperation = async (entry) => {
         const { key, val: operation } = entry;
+
+        // Initialize retry counter
+        operation._retryCount = operation._retryCount || 0;
 
         try {
             switch (operation.type) {
@@ -65,81 +66,74 @@ export const useOfflineSync = (options = {}) => {
                     break;
             }
 
-            // Success
             await removeFromQueue(key);
-            return true; // Continue processing
+            return true;
 
         } catch (error) {
-            // 1. Network Error -> Stop silently (app works offline)
             if (error.message === 'NETWORK_ERROR' || error.isOffline) {
-                // Silently fail - app works completely offline with local data
                 return false;
             }
 
-            // Only log non-network errors
             if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') {
                 console.error("Sync failed for op:", operation.type, error);
             }
 
-            // 2. Conflict (409) -> Auto-Merge or Pause for User
+            // Conflict handling
             if (error.status === 409 || (error.message && error.message.includes('Conflict'))) {
-                const serverItem = error.serverItem; // Assuming api client throws this formatted error
-                // We need to parse the response body from the error if apiClient supports it.
-                // NOTE: apiClient needs to throw an error object containing the response data for this to work.
+                const serverItem = error.serverItem;
 
                 if (serverItem) {
-                    // Try Auto-Merge
-                    // We don't have 'base', just local (operation payload) and server.
-                    // Construct 'local' object from operation payload primarily.
-                    let localItem = {};
-                    if (operation.type.includes('CARD')) {
-                        // Reconstruct card-like object for merging
-                        localItem = { ...operation.payload, ...operation.payload.updates };
-                    } else {
-                        localItem = { ...operation.payload };
-                    }
+                    let localItem = operation.type.includes('CARD')
+                        ? { ...operation.payload, ...operation.payload.updates }
+                        : { ...operation.payload };
 
-                    // Use baseVersion from operation for proper three-way merge
                     const baseVersion = operation.baseVersion || null;
                     const merged = mergeItems(baseVersion, localItem, serverItem);
 
                     if (merged) {
                         console.log("Auto-merged conflict for", operation.type);
-                        // Update queue item with merged data and server version
-                        const newPayload = { ...operation.payload, ...merged, version: serverItem.version }; // Use server version to overwrite
 
-                        // We need to update the LOCAL STORE (Cards/Lists) to reflect the merged state immediately?
-                        // Yes, otherwise UI is stale.
+                        // Limit retries to 1
+                        if (operation._retryCount >= 1) {
+                            console.warn("Conflict could not be resolved automatically, manual resolution required");
+                            if (onConflict) {
+                                onConflict({
+                                    id: key,
+                                    operation,
+                                    local: localItem,
+                                    server: serverItem
+                                });
+                            }
+                            return false;
+                        }
+
+                        const newPayload = { ...operation.payload, ...merged, version: serverItem.version };
+
                         if (operation.type.includes('CARD')) await saveCard(merged);
                         else if (operation.type.includes('LIST')) await saveList(merged);
 
-                        // Update Op in Queue (Modify 'val' and put back?)
-                        // Simplification: We retry immediately with new payload? 
-                        // Better: Recurse? Or just return true to skip removing (wait, no, we need to remove old and add new?)
-                        // Let's just update the in-memory operation and recurse once?
                         operation.payload = newPayload;
+                        operation._retryCount += 1;
+
+                        // Retry once safely
                         return await processOperation({ key, val: operation });
                     } else {
-                        // Manual Resolution Required
                         if (onConflict) {
                             onConflict({
-                                id: key, // Use queue key as conflict ID
-                                operation: operation,
+                                id: key,
+                                operation,
                                 local: localItem,
                                 server: serverItem
                             });
                         }
-                        return false; // Stop queue processing
+                        return false;
                     }
                 }
             }
 
-            // 3. Other Server Error -> Remove & Notify
             await removeFromQueue(key);
-            if (onSyncError) {
-                onSyncError(error, operation);
-            }
-            return true; // Continue (skip this bad one)
+            if (onSyncError) onSyncError(error, operation);
+            return true;
         }
     };
 
@@ -168,56 +162,40 @@ export const useOfflineSync = (options = {}) => {
                 processQueue();
             }
         });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [processQueue]);
 
     const resolveConflict = useCallback(async (conflictId, resolution, serverItem) => {
         console.log(`Resolving conflict ${conflictId} with ${resolution}`, serverItem);
 
         const queue = await getQueue();
-        // Use loose equality and handle potential string/number mismatch for conflictId
         const entry = queue.find(q => q.key == conflictId);
-
         if (!entry) {
             console.warn(`Conflict item ${conflictId} not found in queue.`);
             return;
         }
 
         const { val: operation } = entry;
-        console.log(`Found operation in queue: ${operation.type}`);
 
         if (resolution === 'server') {
-            // "Keep Theirs": Update local DB to match server, remove from queue
             if (serverItem) {
                 if (operation.type.includes('CARD')) await saveCard(serverItem);
-                else if (operation.type.includes('LIST')) await saveList(serverItem);
+                else await saveList(serverItem);
             }
             await removeFromQueue(conflictId);
         } else {
-            // "Keep Mine": Force update by using the server's current version
             if (serverItem) {
                 const newPayload = { ...operation.payload };
-
-                // Handle different payload structures
-                if (newPayload.updates) {
-                    // It's a card update
-                    newPayload.updates.version = serverItem.version;
-                } else {
-                    // It's a list title update or other direct payload
-                    newPayload.version = serverItem.version;
-                }
+                if (newPayload.updates) newPayload.updates.version = serverItem.version;
+                else newPayload.version = serverItem.version;
 
                 await removeFromQueue(conflictId);
-                // Re-queue with new version so the next sync attempt succeeds
                 await addToQueue({ ...operation, payload: newPayload });
             }
         }
 
-        // Resume sync
         processQueue();
     }, [processQueue]);
 
-    // Listen for Online status
     useEffect(() => {
         const handleOnline = () => { setIsOnline(true); processQueue(); };
         const handleOffline = () => setIsOnline(false);

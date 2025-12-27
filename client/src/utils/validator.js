@@ -30,7 +30,7 @@ export const validateListTitle = (title) => {
  * @returns {boolean} - True if valid
  */
 export const validateCardDescription = (description) => {
-    if (!description) return true; // Description is optional
+    if (!description) return true;
     if (typeof description !== 'string') return false;
     if (description.length > 5000) return false;
     return true;

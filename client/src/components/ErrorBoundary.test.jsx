@@ -16,7 +16,7 @@ describe('ErrorBoundary - High Coverage', () => {
     });
 
     it('renders fallback UI on error', () => {
-        // Prevent console.error from cluttering logs
+
         const spy = jest.spyOn(console, 'error').mockImplementation(() => { });
 
         render(

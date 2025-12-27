@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { saveList, saveCard } from '../services/storage';
 
-// Sample data for generating realistic dummy content
+
 const cardTitles = [
     'Implement user authentication',
     'Fix responsive design issues',
@@ -95,7 +95,7 @@ const randomItem = (array) => array[Math.floor(Math.random() * array.length)];
  * Generate random tags for a card
  */
 const generateTags = () => {
-    const numTags = Math.floor(Math.random() * 4) + 1; // 1-4 tags
+    const numTags = Math.floor(Math.random() * 4) + 1;
     const selectedTags = [];
     const availableTags = [...tags];
 
@@ -120,7 +120,7 @@ const generateCard = (listId, orderId) => {
         description,
         list_id: listId,
         order_id: orderId,
-        last_modified: Date.now() - Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000), // Random time in last 30 days
+        last_modified: Date.now() - Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000),
         tags: generateTags()
     };
 };
@@ -136,7 +136,7 @@ export const seedDatabase = async (totalCards = 500, numLists = 8) => {
 
     const startTime = performance.now();
 
-    // Clear existing data first (optional - comment out if you want to keep existing data)
+
     try {
         const db = await new Promise((resolve, reject) => {
             const request = indexedDB.open('JiraLiteDB', 1);
@@ -144,7 +144,7 @@ export const seedDatabase = async (totalCards = 500, numLists = 8) => {
             request.onerror = () => reject(request.error);
         });
 
-        // Clear existing data using transactions
+
         await Promise.all([
             new Promise((resolve, reject) => {
                 const listsTx = db.transaction('lists', 'readwrite');
@@ -165,7 +165,7 @@ export const seedDatabase = async (totalCards = 500, numLists = 8) => {
         console.warn('Could not clear existing data:', error);
     }
 
-    // Generate lists
+
     const lists = [];
     for (let i = 0; i < numLists; i++) {
         const list = {
@@ -182,7 +182,7 @@ export const seedDatabase = async (totalCards = 500, numLists = 8) => {
 
     console.log(`Created ${lists.length} lists`);
 
-    // Distribute cards across lists
+
     const cardsPerList = Math.floor(totalCards / numLists);
     const remainder = totalCards % numLists;
 
@@ -192,7 +192,7 @@ export const seedDatabase = async (totalCards = 500, numLists = 8) => {
         const listId = lists[i].id;
         const cardsForThisList = cardsPerList + (i < remainder ? 1 : 0);
 
-        // Batch save cards for better performance
+
         const cardPromises = [];
 
         for (let j = 0; j < cardsForThisList; j++) {
@@ -200,13 +200,13 @@ export const seedDatabase = async (totalCards = 500, numLists = 8) => {
             cardPromises.push(saveCard(card));
             cardCount++;
 
-            // Log progress every 50 cards
+
             if (cardCount % 50 === 0) {
                 console.log(`Seeded ${cardCount}/${totalCards} cards...`);
             }
         }
 
-        // Wait for all cards in this list to be saved
+
         await Promise.all(cardPromises);
     }
 
@@ -229,7 +229,7 @@ export const seedDatabase = async (totalCards = 500, numLists = 8) => {
  * Run the seeding script (for use in browser console or as a standalone script)
  */
 if (typeof window !== 'undefined') {
-    // Make it available globally for easy access from browser console
+
     window.seedDatabase = seedDatabase;
     console.log('💡 Data seeding script loaded!');
     console.log('   Run: seedDatabase(500, 8) to seed 500 cards across 8 lists');

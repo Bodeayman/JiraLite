@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, memo, useCallback } from 'react';
-import Card from './Card';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import VirtualizedCardList from './VirtualizedCardList';
@@ -67,14 +66,14 @@ const ListColumn = memo(({ id, title, cards = [], onAddCard, onEditName, onArchi
         if (!isMenuOpen) return;
 
         const handleKeyDown = (e) => {
-            // Close on ESC
+
             if (e.key === 'Escape') {
                 setIsMenuOpen(false);
                 buttonRef.current?.focus();
                 return;
             }
 
-            // Arrow key navigation
+
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault();
                 const items = menuItemsRef.current.filter(item => item !== null);
@@ -104,12 +103,12 @@ const ListColumn = memo(({ id, title, cards = [], onAddCard, onEditName, onArchi
         return (e) => {
             e.stopPropagation();
             setIsMenuOpen(false);
-            buttonRef.current?.focus(); // Return focus to toggle button
+            buttonRef.current?.focus();
             action();
         };
     }, []);
 
-    // Keyboard handler for menu toggle button
+
     const handleMenuButtonKeyDown = useCallback((e) => {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();

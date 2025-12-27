@@ -1,7 +1,8 @@
 import { apiClient } from './apiClient';
 
 /* global fetch */
-global.fetch = jest.fn();
+const mockFetch = jest.fn();
+global.fetch = mockFetch;
 
 describe('apiClient', () => {
     beforeEach(() => {

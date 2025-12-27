@@ -9,14 +9,7 @@ import './styles/global.css';
 
 function App() {
   const { isOnline, isSyncing, conflicts, resolveConflict, syncErrors, dismissError } = useBoard();
-  const [showConflicts, setShowConflicts] = useState(false);
-
-  // Auto-show conflict resolver when new conflicts arrive
-  useEffect(() => {
-    if (conflicts.length > 0) {
-      setShowConflicts(true);
-    }
-  }, [conflicts.length]);
+  const showConflicts = conflicts.length > 0;
 
   return (
     <div className="h-screen flex flex-col bg-slate-50 text-slate-800 font-sans selection:bg-violet-100 selection:text-violet-900">

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, lazy, Suspense } from 'react';
+import { useState, useCallback, useMemo, Suspense } from 'react';
 import ErrorBoundary from './ErrorBoundary';
 import Toolbar from './Toolbar';
 import ListColumn from './ListColumn';
@@ -6,11 +6,11 @@ import ConfirmDialog from './ConfirmDialog';
 import InputDialog from './InputDialog';
 import LoadingFallback from './LoadingFallback';
 import { useBoard } from '../context/BoardProvider';
-// Import custom hooks for better code organization and functionality
+
 import { useBoardState } from '../hooks/useBoardState';
 
-// Note: useUndoRedo is available but requires state management refactoring to integrate fully
-// import { useUndoRedo } from '../hooks/useUndoRedo';
+
+
 
 import CardDetailModal from './CardDetailModal';
 
@@ -34,25 +34,25 @@ import {
 const Board = () => {
     const { state, dispatch } = useBoard();
 
-    // Use useBoardState hook for cleaner, more maintainable board operations
-    // This hook wraps reducer actions and provides convenient methods instead of raw dispatch calls
+
+
     const boardState = useBoardState();
 
-    // Note: useUndoRedo hook is available but would require refactoring the state management
-    // to track state changes. Currently, BoardProvider handles state via reducer.
-    // To integrate undo/redo, you would need to:
-    // 1. Capture state snapshots before each operation
-    // 2. Store them in the undo/redo stack
-    // 3. Provide UI controls (keyboard shortcuts, buttons) to trigger undo/redo
-    // Example integration would look like:
-    // const undoRedo = useUndoRedo(state, 50);
-    // Then wrap state updates: undoRedo.setState(newState);
+
+
+
+
+
+
+
+
+
 
     const [selectedCard, setSelectedCard] = useState(null);
     const [activeId, setActiveId] = useState(null);
     const [activeItem, setActiveItem] = useState(null);
 
-    // Dialog State
+
     const [confirmDialog, setConfirmDialog] = useState({
         isOpen: false,
         title: '',
@@ -60,7 +60,7 @@ const Board = () => {
         onConfirm: () => { },
     });
 
-    // Input Dialog State
+
     const [inputDialog, setInputDialog] = useState({
         isOpen: false,
         title: '',
@@ -89,7 +89,7 @@ const Board = () => {
         setSelectedCard(null);
     }, []);
 
-    // Helper to open confirm dialog
+
     const confirmAction = useCallback((title, message, action) => {
         setConfirmDialog({
             isOpen: true,
@@ -102,7 +102,7 @@ const Board = () => {
         });
     }, []);
 
-    // Helper to open input dialog
+
     const openInputDialog = useCallback((title, message, placeholder, initialValue, onConfirm) => {
         setInputDialog({
             isOpen: true,
@@ -155,14 +155,14 @@ const Board = () => {
         const activeType = active.data.current?.type;
 
         if (activeType === 'Column' && active.id !== over.id) {
-            // Using useBoardState hook for cleaner API
+
             boardState.moveList(active.id, over.id);
         } else if (activeType === 'Card') {
             const activeColumnId = findContainer(active.id);
             const overColumnId = findContainer(over.id) || (over.data.current?.type === 'Column' ? over.id : null);
 
             if (activeColumnId && overColumnId) {
-                // Using useBoardState hook for cleaner API
+
                 boardState.moveCard(active.id, over.id, activeColumnId, overColumnId);
             }
         }
@@ -186,7 +186,7 @@ const Board = () => {
             "Delete Card",
             "Are you sure you want to delete this card? This action cannot be undone.",
             () => {
-                // Using useBoardState hook for cleaner API
+
                 boardState.deleteCard(id);
                 handleCloseModal();
             }
@@ -194,7 +194,7 @@ const Board = () => {
     }, [confirmAction, boardState, handleCloseModal]);
 
     const handleUpdateCard = useCallback((id, updates) => {
-        // Using useBoardState hook for cleaner API instead of raw dispatch
+
         boardState.updateCard(id, updates);
     }, [boardState]);
 
@@ -220,7 +220,7 @@ const Board = () => {
                                         "",
                                         (title) => {
                                             if (title) {
-                                                // Using useBoardState hook for cleaner API
+
                                                 boardState.addCard(column.id, title);
                                             }
                                         }
@@ -235,7 +235,7 @@ const Board = () => {
                                         column.title,
                                         (newTitle) => {
                                             if (newTitle) {
-                                                // Using useBoardState hook for cleaner API
+
                                                 boardState.editListTitle(column.id, newTitle);
                                             }
                                         }
@@ -247,7 +247,7 @@ const Board = () => {
                                         "Archive List",
                                         `Are you sure you want to archive "${column.title}"? This action cannot be undone.`,
                                         () => {
-                                            // Using useBoardState hook for cleaner API
+
                                             boardState.archiveList(column.id);
                                         }
                                     );
@@ -272,7 +272,7 @@ const Board = () => {
 
                 <DragOverlay dropAnimation={dropAnimation}>
                     {activeId ? (
-                        activeItem && 'cards' in activeItem ? ( // It's a column
+                        activeItem && 'cards' in activeItem ? (
                             <div className="w-80 bg-slate-100 rounded-xl p-4 flex flex-col opacity-90 border-2 border-violet-500 transform rotate-2 shadow-2xl">
                                 <h3 className="font-bold text-slate-700 mb-4">{activeItem.title}</h3>
                                 <div className="space-y-3">
@@ -280,7 +280,7 @@ const Board = () => {
                                     <div className="h-12 bg-white rounded-lg shadow-sm"></div>
                                 </div>
                             </div>
-                        ) : ( // It's a card
+                        ) : (
                             <div className="bg-white p-4 rounded-xl shadow-2xl border border-violet-500 cursor-grabbing transform rotate-2 w-[280px]">
                                 <h4 className="font-medium text-slate-800">{activeItem.title}</h4>
                             </div>
@@ -315,6 +315,7 @@ const Board = () => {
                     )}>
                         <Suspense fallback={<LoadingFallback message="Loading card details modal..." />}>
                             <CardDetailModal
+                                key={selectedCard.id}
                                 card={selectedCard}
                                 onClose={handleCloseModal}
                                 onDelete={handleDeleteCard}

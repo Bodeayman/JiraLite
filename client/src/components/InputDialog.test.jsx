@@ -43,7 +43,7 @@ describe('InputDialog - Robust', () => {
         fireEvent.click(screen.getByText('Confirm'));
 
         expect(defaultProps.onConfirm).toHaveBeenCalledWith('Trim Me');
-        // Input is cleared internally on confirm
+
         expect(input.value).toBe('');
     });
 
@@ -76,7 +76,7 @@ describe('InputDialog - Robust', () => {
 
     it('should call onCancel on backdrop click', () => {
         render(<InputDialog {...defaultProps} />);
-        // Backdrop is the outermost div
+
         fireEvent.click(screen.getByRole('dialog').parentElement);
         expect(defaultProps.onCancel).toHaveBeenCalled();
     });
@@ -84,8 +84,8 @@ describe('InputDialog - Robust', () => {
     it('should select text on open', () => {
         render(<InputDialog {...defaultProps} />);
         const input = screen.getByPlaceholderText('List name...');
-        // input.select() is called. It's hard to verify selection range in JSDOM, 
-        // but we verify focus at least.
+
+
         expect(document.activeElement).toBe(input);
     });
 });

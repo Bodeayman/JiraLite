@@ -40,7 +40,7 @@ describe('ConfirmDialog - Robust', () => {
 
     it('should call onCancel when the backdrop is clicked', () => {
         render(<ConfirmDialog {...defaultProps} />);
-        // The backdrop is the parent of the dialog element
+
         fireEvent.click(screen.getByRole('dialog').parentElement);
         expect(defaultProps.onCancel).toHaveBeenCalled();
     });
@@ -53,8 +53,8 @@ describe('ConfirmDialog - Robust', () => {
 
     it('should detect danger type based on title', () => {
         render(<ConfirmDialog {...defaultProps} title="Archive Item" />);
-        // Checking for the SVG or red classes might be too implementation-specific, 
-        // but it should render "Delete" if it's danger-like
+
+
         expect(screen.getByText('Delete')).toBeInTheDocument();
     });
 
@@ -66,13 +66,13 @@ describe('ConfirmDialog - Robust', () => {
     it('should trap focus (Shift+Tab from first to last)', async () => {
         render(<ConfirmDialog {...defaultProps} />);
         const buttons = screen.getAllByRole('button');
-        const first = buttons[0]; // Cancel
-        const last = buttons[1];  // Delete
+        const first = buttons[0];
+        const last = buttons[1];
 
         first.focus();
         fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
-        // In JSDOM, we need to manually trigger the focus trap logic since real focus doesn't always flow
-        // The component attaches a listener to document for 'keydown'
+
+
         expect(document.activeElement).toBe(last);
     });
 

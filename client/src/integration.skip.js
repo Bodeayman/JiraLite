@@ -1,5 +1,5 @@
-// Integration test temporarily disabled due to module resolution issues in testing environment.
-// See boardReducer.test.js and useOfflineSync.test.js for coverage.
+
+
 
 /*
 import { renderHook, act, waitFor } from '@testing-library/react';
@@ -13,6 +13,6 @@ import * as storage from './services/storage';
 const wrapper = ({ children }) => <BoardProvider>{children}</BoardProvider>;
 
 describe('Integration: Board Logic + Offline Sync', () => {
-    // ...
+    
 });
 */

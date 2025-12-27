@@ -3,7 +3,15 @@ import { useBoard } from '../context/BoardProvider';
 
 const Toolbar = () => {
     const [listName, setListName] = useState('');
-    const { dispatch } = useBoard();
+    const {
+        dispatch,
+        undo,
+        redo,
+        canUndo,
+        canRedo,
+        historySize,
+        redoSize
+    } = useBoard();
 
     const handleCreateList = () => {
         if (!listName.trim()) return;
@@ -34,6 +42,24 @@ const Toolbar = () => {
             >
                 Create List
             </button>
+            <div className="inline-flex items-center gap-2 ml-4">
+                <button
+                    className={`btn-secondary ${!canUndo ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    onClick={undo}
+                    disabled={!canUndo}
+                    title={`Undo (Ctrl/Cmd+Z)${historySize > 0 ? ` - ${historySize} actions` : ''}`}
+                >
+                    ⎌ Undo {historySize > 0 && `(${historySize})`}
+                </button>
+                <button
+                    className={`btn-secondary ${!canRedo ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    onClick={redo}
+                    disabled={!canRedo}
+                    title={`Redo (Ctrl/Cmd+Shift+Z)${redoSize > 0 ? ` - ${redoSize} actions` : ''}`}
+                >
+                    ⎌ Redo {redoSize > 0 && `(${redoSize})`}
+                </button>
+            </div>
         </div>
     );
 };

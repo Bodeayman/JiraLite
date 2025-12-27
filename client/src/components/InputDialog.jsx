@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 const InputDialog = ({ isOpen, title, message, placeholder, initialValue = '', onConfirm, onCancel }) => {
     const [inputValue, setInputValue] = useState(initialValue);
@@ -71,7 +71,7 @@ const InputDialog = ({ isOpen, title, message, placeholder, initialValue = '', o
 
         document.addEventListener('keydown', trapFocus);
         return () => document.removeEventListener('keydown', trapFocus);
-    }, [isOpen, inputValue]); // Re-run when inputValue changes (affects disabled state)
+    }, [isOpen, inputValue]);
 
     if (!isOpen) return null;
 

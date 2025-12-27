@@ -76,9 +76,9 @@ const ConfirmDialog = ({
     if (!isOpen) return null;
 
     const handleBackdropClick = (e) => {
-        if (e.target === e.currentTarget) {
-            onCancel();
-        }
+        // Only trigger cancel when clicking the backdrop itself (not inner dialog)
+        if (e.target !== e.currentTarget) return;
+        onCancel();
     };
 
     const handleBackdropKeyDown = (e) => {
@@ -92,16 +92,15 @@ const ConfirmDialog = ({
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
             onClick={handleBackdropClick}
             onKeyDown={handleBackdropKeyDown}
-            role="dialog"
-            aria-modal="true"
-            tabIndex={-1}
         >
             <div
                 ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                tabIndex={-1}
                 aria-labelledby="confirm-dialog-title"
                 aria-describedby="confirm-dialog-message"
-                className={`rounded-xl shadow-2xl max-w-sm w-full overflow-hidden bg-white ${isDelete ? 'border-2 border-red-200' : ''
-                    }`}
+                className={`rounded-xl shadow-2xl max-w-sm w-full overflow-hidden bg-white ${isDelete ? 'border-2 border-red-200' : ''}`}
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
             >

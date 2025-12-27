@@ -1,8 +1,8 @@
 import { useState } from 'react';
 
 const ConflictResolver = ({ conflicts, onResolve, onCancel }) => {
-    // conflicts: [{ id, base, local, server }]
-    // We handle one at a time or all? Let's do one at a time for simplicity.
+
+
     const [currentIndex, setCurrentIndex] = useState(0);
     const currentConflict = conflicts[currentIndex];
 
@@ -12,7 +12,7 @@ const ConflictResolver = ({ conflicts, onResolve, onCancel }) => {
     const type = local.title ? (local.cards ? 'List' : 'Card') : 'Unknown';
 
     const handleResolve = (resolution) => {
-        // resolution: 'local' (mine), 'server' (theirs)
+
         onResolve(currentConflict.id, resolution);
         if (currentIndex < conflicts.length - 1) {
             setCurrentIndex(prev => prev + 1);

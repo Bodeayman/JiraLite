@@ -87,7 +87,7 @@ export const useBoardState = () => {
             return;
         }
         if (activeId === overId) {
-            return; // No-op if moving to same position
+            return;
         }
         dispatch({
             type: 'MOVE_LIST',

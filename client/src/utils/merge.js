@@ -8,13 +8,13 @@
  * @returns {Object|null} - Merged object or null if conflict
  */
 export const mergeItems = (base, local, server) => {
-    // If no base, assume standard "ours vs theirs", but let's try to infer.
-    // In our queue system, we might not have the exact "base" stored easily unless we snapshot it.
-    // If we lack base, we compare local vs server directly.
-    // Conflict if: local[key] !== server[key] AND local[key] !== base[key] (if base exists)
+
+
+
+
 
     const keys = new Set([...Object.keys(local), ...Object.keys(server)]);
-    const merged = { ...server }; // Start with server as truth
+    const merged = { ...server };
 
     let hasConflict = false;
 
@@ -23,7 +23,7 @@ export const mergeItems = (base, local, server) => {
         const localVal = local[key];
         const serverVal = server[key];
 
-        // Ignore internal fields
+
         if (['version', 'lastModifiedAt', 'last_modified', 'timestamp'].includes(key)) continue;
 
         const localChanged = localVal !== baseVal;
@@ -31,16 +31,16 @@ export const mergeItems = (base, local, server) => {
 
         if (localChanged && serverChanged) {
             if (localVal !== serverVal) {
-                // Both changed to different values -> CONFLICT
+
                 hasConflict = true;
                 console.log(`Conflict detected on field '${key}': Local='${localVal}', Server='${serverVal}'`);
             }
-            // If both changed to SAME value, it's fine (already in merged from server copy)
+
         } else if (localChanged) {
-            // Only local changed -> Keep local
+
             merged[key] = localVal;
         }
-        // If only server changed -> Keep server (already in merged)
+
     }
 
     if (hasConflict) return null;

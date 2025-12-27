@@ -6,7 +6,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 const CARD_HEIGHT = 120;
 const VIRTUALIZATION_THRESHOLD = 30;
 
-// Render a single card row
+
 const CardRow = memo(({ index, style, cards, onCardClick }) => {
     const card = cards[index];
 
@@ -53,7 +53,7 @@ const VirtualizedCardList = memo(({ cards, onCardClick, listTitle = 'Cards' }) =
             }
             previousCardCount.current = currentCount;
 
-            // Clear announcement after screen reader reads it
+
             const timer = setTimeout(() => setAnnouncement(''), 1000);
             return () => clearTimeout(timer);
         }
@@ -96,7 +96,7 @@ const VirtualizedCardList = memo(({ cards, onCardClick, listTitle = 'Cards' }) =
         };
     }, [shouldVirtualize]);
 
-    // Non-virtualized list (under threshold)
+
     if (!shouldVirtualize) {
         return (
             <>
@@ -146,7 +146,7 @@ const VirtualizedCardList = memo(({ cards, onCardClick, listTitle = 'Cards' }) =
         );
     }
 
-    // Virtualized list (over threshold)
+
     return (
         <>
             {/* Screen reader announcements */}

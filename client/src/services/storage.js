@@ -7,7 +7,7 @@ const STORES = {
     QUEUE: 'queue'
 };
 
-// JSON Backup Key for localStorage
+
 const JSON_BACKUP_KEY = 'jiralite_board_backup';
 
 const openDB = () => {
@@ -19,7 +19,7 @@ const openDB = () => {
             reject(event.target.error);
         };
 
-        request.onblocked = (event) => {
+        request.onblocked = (_event) => {
             console.warn("IDB Upgrade Blocked. Please close other tabs of this app.");
         };
 
@@ -58,7 +58,7 @@ const getAllFromStore = (db, storeName) => {
     });
 };
 
-// Save board data to JSON backup in localStorage
+
 const saveJSONBackup = (data) => {
     try {
         const jsonData = JSON.stringify(data);
@@ -68,7 +68,7 @@ const saveJSONBackup = (data) => {
     }
 };
 
-// Load board data from JSON backup in localStorage
+
 const loadJSONBackup = () => {
     try {
         const jsonData = localStorage.getItem(JSON_BACKUP_KEY);
@@ -82,7 +82,7 @@ const loadJSONBackup = () => {
     return null;
 };
 
-// Helper function to build board data from IndexedDB without circular dependency
+
 const buildBoardDataFromDB = async (db) => {
     const lists = await getAllFromStore(db, STORES.LISTS);
     const cards = await getAllFromStore(db, STORES.CARDS);
@@ -104,7 +104,7 @@ const buildBoardDataFromDB = async (db) => {
     return { columns };
 };
 
-// Update JSON backup after any storage operation
+
 const updateJSONBackup = async () => {
     try {
         const db = await openDB();
@@ -120,12 +120,12 @@ export const loadBoard = async () => {
         const db = await openDB();
         const boardData = await buildBoardDataFromDB(db);
 
-        // If IndexedDB is empty, try loading from JSON backup
+
         if (boardData.columns.length === 0) {
             const backupData = loadJSONBackup();
             if (backupData && backupData.columns && backupData.columns.length > 0) {
                 console.log('Restoring from JSON backup...');
-                // Restore to IndexedDB
+
                 for (const column of backupData.columns) {
                     const { cards: columnCards, ...listData } = column;
                     const listTx = db.transaction(STORES.LISTS, 'readwrite');
@@ -144,18 +144,18 @@ export const loadBoard = async () => {
                         });
                     }
                 }
-                // Reload after restoration
+
                 return await buildBoardDataFromDB(await openDB());
             }
         }
 
-        // Always update JSON backup when loading
+
         saveJSONBackup(boardData);
 
         return boardData;
     } catch (error) {
         console.error('Failed to load from IndexedDB, trying JSON backup:', error);
-        // Fallback to JSON backup if IndexedDB fails
+
         const backupData = loadJSONBackup();
         if (backupData) {
             return backupData;
@@ -169,7 +169,7 @@ export const saveList = async (list) => {
     return new Promise((resolve, reject) => {
         const request = getStore(db, STORES.LISTS, 'readwrite').put(list);
         request.onsuccess = async () => {
-            // Update JSON backup after saving
+
             await updateJSONBackup();
             resolve(request.result);
         };
@@ -182,7 +182,7 @@ export const saveCard = async (card) => {
     return new Promise((resolve, reject) => {
         const request = getStore(db, STORES.CARDS, 'readwrite').put(card);
         request.onsuccess = async () => {
-            // Update JSON backup after saving
+
             await updateJSONBackup();
             resolve(request.result);
         };
@@ -195,7 +195,7 @@ export const deleteCard = async (id) => {
     return new Promise((resolve, reject) => {
         const request = getStore(db, STORES.CARDS, 'readwrite').delete(id);
         request.onsuccess = async () => {
-            // Update JSON backup after deleting
+
             await updateJSONBackup();
             resolve(request.result);
         };
@@ -208,7 +208,7 @@ export const deleteList = async (id) => {
     return new Promise((resolve, reject) => {
         const request = getStore(db, STORES.LISTS, 'readwrite').delete(id);
         request.onsuccess = async () => {
-            // Update JSON backup after deleting
+
             await updateJSONBackup();
             resolve(request.result);
         };
@@ -216,7 +216,7 @@ export const deleteList = async (id) => {
     });
 };
 
-// Batch update for reordering
+
 export const updateListsOrder = async (lists) => {
     const db = await openDB();
     const tx = db.transaction(STORES.LISTS, 'readwrite');
@@ -225,7 +225,7 @@ export const updateListsOrder = async (lists) => {
     });
     return new Promise((resolve, reject) => {
         tx.oncomplete = async () => {
-            // Update JSON backup after reordering
+
             const boardData = await loadBoard();
             saveJSONBackup(boardData);
             resolve();
@@ -242,7 +242,7 @@ export const updateCardsOrder = async (cards) => {
     });
     return new Promise((resolve, reject) => {
         tx.oncomplete = async () => {
-            // Update JSON backup after reordering
+
             const boardData = await loadBoard();
             saveJSONBackup(boardData);
             resolve();
@@ -251,20 +251,20 @@ export const updateCardsOrder = async (cards) => {
     });
 };
 
-// --- Queue Methods ---
+
 
 export const addToQueue = async (action) => {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-        // Add timestamp for debugging/sorting if needed, though autoIncrement handles order
+
         const item = { ...action, timestamp: Date.now() };
         const request = getStore(db, STORES.QUEUE, 'readwrite').add(item);
-        request.onsuccess = () => resolve(request.result); // Returns key
+        request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
     });
 }
 
-// Get all items in queue, with their keys
+
 export const getQueue = async () => {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -284,7 +284,7 @@ export const getQueue = async () => {
     });
 };
 
-// Remove an item by key (used after successful sync)
+
 export const removeFromQueue = async (key) => {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -303,13 +303,13 @@ export const clearQueue = async () => {
     });
 };
 
-// Export board data as JSON string
+
 export const exportBoardAsJSON = async () => {
     const boardData = await loadBoard();
     return JSON.stringify(boardData, null, 2);
 };
 
-// Import board data from JSON string
+
 export const importBoardFromJSON = async (jsonString) => {
     try {
         const boardData = JSON.parse(jsonString);
@@ -317,10 +317,10 @@ export const importBoardFromJSON = async (jsonString) => {
             throw new Error('Invalid board data format');
         }
 
-        // Clear existing data
+
         const db = await openDB();
 
-        // Clear lists
+
         const listsTx = db.transaction(STORES.LISTS, 'readwrite');
         await new Promise((resolve, reject) => {
             listsTx.objectStore(STORES.LISTS).clear();
@@ -328,7 +328,7 @@ export const importBoardFromJSON = async (jsonString) => {
             listsTx.onerror = () => reject(listsTx.error);
         });
 
-        // Clear cards
+
         const cardsTx = db.transaction(STORES.CARDS, 'readwrite');
         await new Promise((resolve, reject) => {
             cardsTx.objectStore(STORES.CARDS).clear();
@@ -336,7 +336,7 @@ export const importBoardFromJSON = async (jsonString) => {
             cardsTx.onerror = () => reject(cardsTx.error);
         });
 
-        // Import new data
+
         for (const column of boardData.columns) {
             const { cards: columnCards, ...listData } = column;
             await saveList(listData);
@@ -345,7 +345,7 @@ export const importBoardFromJSON = async (jsonString) => {
             }
         }
 
-        // Update JSON backup
+
         saveJSONBackup(boardData);
 
         return boardData;
@@ -355,7 +355,7 @@ export const importBoardFromJSON = async (jsonString) => {
     }
 };
 
-// Download board as JSON file
+
 export const downloadBoardAsJSON = async () => {
     const jsonString = await exportBoardAsJSON();
     const blob = new Blob([jsonString], { type: 'application/json' });

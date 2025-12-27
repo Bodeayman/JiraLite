@@ -4,7 +4,6 @@ const request = async (endpoint, options = {}) => {
     const url = `${BASE_URL}${endpoint}`;
     const headers = { 'Content-Type': 'application/json', ...options.headers };
 
-    // Create abort controller for timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
 

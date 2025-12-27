@@ -4,7 +4,7 @@ import App from './App.jsx'
 import { BoardProvider } from './context/BoardProvider'
 import './styles/global.css'
 
-// Import seeding script for development/testing
+
 import './scripts/seedData.js'
 
 createRoot(document.getElementById('root')).render(

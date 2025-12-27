@@ -16,7 +16,7 @@ class ErrorBoundary extends React.Component {
 
     render() {
         if (this.state.hasError) {
-            // Check if it's a chunk load error (common with lazy loading offline)
+
             const isChunkError = this.state.error?.name === 'ChunkLoadError' ||
                 this.state.error?.message?.includes('Loading chunk');
 

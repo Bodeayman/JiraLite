@@ -27,6 +27,9 @@ const Card = memo(({ id, title, tags = [], onClick }) => {
             style={style}
             {...attributes}
             {...listeners}
+
+            role="button"
+            tabIndex={0}
             onClick={onClick}
             className="card-base mb-3"
         >

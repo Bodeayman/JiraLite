@@ -4,18 +4,18 @@ export const initialState = {
     ui: {
         selectedCardId: null,
         draggingId: null,
-        activeItemType: null // 'Column' or 'Card'
+        activeItemType: null
     }
 };
 
 export const boardReducer = (state, action) => {
     switch (action.type) {
         case 'INIT_BOARD':
-            // Merge loaded data with initial UI state (or reset UI state)
+
             return {
                 ...state,
                 columns: action.payload.columns,
-                // ui: state.ui // Keep existing UI state or reset? Reset is safer on init.
+
             };
 
         case 'SET_SELECTED_CARD':
@@ -137,7 +137,7 @@ export const boardReducer = (state, action) => {
             const [movedColumn] = newColumns.splice(oldIndex, 1);
             newColumns.splice(newIndex, 0, movedColumn);
 
-            // Update order property
+
             return {
                 ...state,
                 columns: newColumns.map((col, index) => ({ ...col, order: index }))
@@ -147,42 +147,42 @@ export const boardReducer = (state, action) => {
         case 'MOVE_CARD': {
             const { activeId, overId, activeColumnId, overColumnId } = action.payload;
 
-            // Find positions in the original state to check validity
+
             const sourceColIndex = state.columns.findIndex(col => col.id === activeColumnId);
             const destColIndex = state.columns.findIndex(col => col.id === overColumnId);
 
             if (sourceColIndex === -1 || destColIndex === -1) return state;
 
-            // Create new columns array
+
             const newColumns = [...state.columns];
 
-            // Create new source column object
+
             const sourceCol = { ...newColumns[sourceColIndex], cards: [...newColumns[sourceColIndex].cards] };
 
-            // Identify active card
+
             const activeCardIndex = sourceCol.cards.findIndex(c => c.id === activeId);
             if (activeCardIndex === -1) return state;
 
             const activeCard = sourceCol.cards[activeCardIndex];
 
-            // Remove from source
+
             sourceCol.cards.splice(activeCardIndex, 1);
 
-            // Update source column in newColumns
+
             newColumns[sourceColIndex] = sourceCol;
 
-            // Determine destination column
-            // If source and dest are same, we use the already modified sourceCol as the base for destination operations
-            // otherwise we clone the destination column
+
+
+
             let destCol;
             if (sourceColIndex === destColIndex) {
                 destCol = sourceCol;
             } else {
                 destCol = { ...newColumns[destColIndex], cards: [...newColumns[destColIndex].cards] };
-                newColumns[destColIndex] = destCol; // Update dest column in newColumns
+                newColumns[destColIndex] = destCol;
             }
 
-            // Calculate insertion index
+
             let overCardIndex = -1;
             if (overId) {
                 overCardIndex = destCol.cards.findIndex(c => c.id === overId);
@@ -190,17 +190,17 @@ export const boardReducer = (state, action) => {
 
             const newIndex = overCardIndex >= 0 ? overCardIndex : destCol.cards.length;
 
-            // Create updated card with new list_id
+
             const updatedCard = {
                 ...activeCard,
                 list_id: overColumnId,
                 last_modified: Date.now()
             };
 
-            // Insert into destination
+
             destCol.cards.splice(newIndex, 0, updatedCard);
 
-            // Reassign order_id for all cards in affected columns using map for immutability
+
             destCol.cards = destCol.cards.map((c, i) => ({ ...c, order_id: i }));
 
             if (sourceColIndex !== destColIndex) {
@@ -214,8 +214,11 @@ export const boardReducer = (state, action) => {
         }
 
         case 'REVERT_OPTIMISTIC_UPDATE':
-            // Revert to previous state on sync failure
+
             return action.payload.previousState;
+
+        case 'SET_BOARD':
+            return action.payload;
 
         default:
             return state;

@@ -5,11 +5,11 @@ export const useUndoRedo = (initialState, maxHistorySize = 50) => {
     const [undoStack, setUndoStack] = useState([]);
     const [redoStack, setRedoStack] = useState([]);
 
-    // Track if we're currently performing undo/redo to avoid adding to history
+
     const isUndoingRef = useRef(false);
     const isRedoingRef = useRef(false);
 
-    // Track initial state for reset functionality
+
     const initialStateRef = useRef(initialState);
 
 
@@ -19,7 +19,7 @@ export const useUndoRedo = (initialState, maxHistorySize = 50) => {
 
 
     const setState = useCallback((newState, addToHistory = true) => {
-        // Don't add to history if we're undoing/redoing
+
         if (isUndoingRef.current || isRedoingRef.current) {
             setCurrentState(newState);
             return;
@@ -28,13 +28,13 @@ export const useUndoRedo = (initialState, maxHistorySize = 50) => {
         if (addToHistory) {
             setUndoStack(prev => {
                 const updated = [...prev, currentState];
-                // Limit history size
+
                 if (updated.length > maxHistorySize) {
-                    updated.shift(); // Remove oldest entry
+                    updated.shift();
                 }
                 return updated;
             });
-            // Clear redo stack when new action is performed
+
             setRedoStack([]);
         }
 
@@ -55,7 +55,7 @@ export const useUndoRedo = (initialState, maxHistorySize = 50) => {
         setUndoStack(prev => prev.slice(0, -1));
         setCurrentState(previousState);
 
-        // Reset flag after state update
+
         setTimeout(() => {
             isUndoingRef.current = false;
         }, 0);
@@ -74,7 +74,7 @@ export const useUndoRedo = (initialState, maxHistorySize = 50) => {
         setRedoStack(prev => prev.slice(0, -1));
         setCurrentState(nextState);
 
-        // Reset flag after state update
+
         setTimeout(() => {
             isRedoingRef.current = false;
         }, 0);
@@ -124,18 +124,18 @@ export const useBoardUndoRedo = (initialState, dispatch, maxHistorySize = 50) =>
 
 
     const dispatchWithUndo = useCallback((action) => {
-        // Dispatch the action first
+
         if (dispatch) {
             dispatch(action);
         }
 
-        // Note: In a real implementation, you'd need to capture the new state
-        // after dispatch. This requires either:
-        // 1. Using a reducer that returns the new state
-        // 2. Subscribing to state changes
-        // 3. Computing the new state from the action
 
-        // For now, this is a placeholder that shows the pattern
+
+
+
+
+
+
         console.log('useBoardUndoRedo: Action dispatched:', action);
     }, [dispatch]);
 

@@ -9,7 +9,7 @@ const CardDetailModal = memo(({ card, onClose, onDelete, onUpdate }) => {
     const modalRef = useRef(null);
     const titleInputRef = useRef(null);
 
-    // Update local state when card prop changes
+
     useEffect(() => {
         if (card) {
             setTitle(card.title);
@@ -67,7 +67,7 @@ const CardDetailModal = memo(({ card, onClose, onDelete, onUpdate }) => {
 
         document.addEventListener('keydown', trapFocus);
         return () => document.removeEventListener('keydown', trapFocus);
-    }, [tags]); // Re-run when tags change (affects focusable elements)
+    }, [tags]);
 
     const handleSave = useCallback(() => {
         onUpdate(card.id, {
@@ -95,7 +95,7 @@ const CardDetailModal = memo(({ card, onClose, onDelete, onUpdate }) => {
         setTags(prevTags => prevTags.filter(tag => tag !== tagToRemove));
     }, []);
 
-    // Keyboard handler for tag removal
+
     const handleTagKeyDown = useCallback((e, tag) => {
         if (e.key === 'Delete' || e.key === 'Backspace') {
             e.preventDefault();

@@ -22,7 +22,7 @@ describe('mergeConflicts', () => {
 
             expect(result.hasConflict).toBe(true);
             expect(result.conflicts.title).toBeDefined();
-            expect(result.merged.title).toBe('Server Change'); // Defaults to server
+            expect(result.merged.title).toBe('Server Change');
         });
 
         it('should merge non-conflicting changes', () => {
